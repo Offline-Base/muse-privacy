@@ -32,7 +32,7 @@
 
     <h2>Connecting</h2>
     <ul>
-      <li><strong>Endpoint:</strong> <code>https://muse-privacy-relay.offlinebase.workers.dev/mcp</code>, MCP streamable HTTP, stateless, JSON responses. The relay forwards each request to the user's device over a connection the device opens; it stores no request or result content.</li>
+      <li><strong>Endpoint:</strong> <code>https://theethancastro--muse-privacy-relay.modal.run/mcp</code>, MCP streamable HTTP, stateless, JSON responses. The relay forwards each request to the user's device over a connection the device opens; it stores no request or result content.</li>
       <li><strong>Authentication:</strong> OAuth 2.1 with PKCE (S256). Clients register by dynamic client registration or a Client ID Metadata Document. Scopes: <code>mcp</code> (required) and <code>offline_access</code>. Access tokens last 1 hour, refresh tokens 30 days. No API keys.</li>
       <li><strong>Consent:</strong> the link page shows the app's name, asks for the pairing code from the device, and offers <strong>Full access</strong> or <strong>Read only</strong>. A read-only link lists and runs only the Read tools below; the relay answers any other tool itself and never sends it to the device.</li>
       <li><strong>Revoking:</strong> the user runs <code>relay_client unlink</code> on the device, which revokes every link to it at once.</li>

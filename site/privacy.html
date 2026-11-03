@@ -29,11 +29,11 @@
     <p>We do not sell this data, use it for advertising, build profiles, infer sensitive characteristics from it, or use it to train models.</p>
 
     <h2>The relay</h2>
-    <p>Muse reaches your device through our relay, a Cloudflare Worker. It passes each request and answer through without storing or logging their content. It keeps only: device ids, a hash of each device secret, OAuth clients, grants and hashed tokens, including whether a link is read only; hashed pairing codes; and hashed IP addresses in counters that reset every 10 minutes. Cloudflare keeps error logs for the relay; per-request logs are off.</p>
+    <p>Muse reaches your device through our relay, which runs on Modal. It passes each request and answer through without storing or logging their content. It keeps only: device ids, a hash of each device secret, OAuth clients, grants and hashed tokens, including whether a link is read only; hashed pairing codes; and hashed IP addresses in counters that reset every 10 minutes. Modal keeps the relay's service logs, which never include request or answer content.</p>
     <p>Traffic between Muse, the relay and your device is encrypted in transit (HTTPS and WSS).</p>
 
     <h2>Sharing</h2>
-    <p>We share nothing with anyone. Cloudflare hosts the relay as our processor. Muse is operated by Meta.</p>
+    <p>We share nothing with anyone. Modal hosts the relay as our processor. Muse is operated by Meta.</p>
 
     <h2>Your choices</h2>
     <ul>

@@ -43,6 +43,7 @@ BACKOFF_BASE = 1.0
 BACKOFF_CAP = 60.0
 # The relay closes a device socket with this code when a newer one connects with the same secret.
 REPLACED_CLOSE_CODE = 4000
+UNAUTHORIZED_CLOSE_CODE = 4401
 
 
 EXIT_NO_RETRY = 3  # bad or revoked device secret, or another copy took over
@@ -444,6 +445,9 @@ class RelayClient:
                 else:
                     log.warning("relay refused the connection (HTTP %s)", exc.response.status_code)
             except (OSError, TimeoutError, WebSocketException) as exc:
+                if getattr(getattr(exc, "rcvd", None), "code", None) == UNAUTHORIZED_CLOSE_CODE:
+                    # The Modal relay's way to say 401 on a WebSocket (relay_modal/app.py).
+                    raise RelayAuthError("The relay rejected the device secret. Run register again.") from None
                 if getattr(getattr(exc, "rcvd", None), "code", None) == REPLACED_CLOSE_CODE:
                     # Reconnecting would knock the other copy off in turn, and both would keep flapping.
                     raise RelayReplacedError(

@@ -16,9 +16,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import hmac
 import ipaddress
+import json
+import logging
 import secrets
 import socket
 import time
@@ -33,6 +36,8 @@ from . import gates
 from .hub import Hub, Reply
 from .pages import CSP, access_from, message_page, pairing_page
 from .store import Store
+
+log = logging.getLogger("relay")
 
 SCOPE = "mcp"
 SCOPES = (SCOPE, "offline_access")
@@ -55,6 +60,13 @@ MIN_PEPPER_LENGTH = 32
 MAX_BODY_BYTES = 4 * 1024 * 1024
 CIMD_CACHE_SECONDS = 3600
 CIMD_MAX_BYTES = 64 * 1024
+CIMD_DEADLINE_SECONDS = 5.0
+CIMD_FAILURE_CACHE_SECONDS = 60
+AUTHORIZE_PER_IP = 60
+COMMIT_EVERY_SECONDS = 2.0
+MAX_SOCKET_AGE_SECONDS = 600  # an idle device socket is recycled so it lands on the newest container after a deploy
+UNAUTHORIZED_CLOSE_CODE = 4401  # the device secret is wrong or revoked: relay_client stops (exit 3)
+RECYCLE_CLOSE_CODE = 1012  # "service restart": the device reconnects (4000 would make it stop for good)
 FORWARDED = ("content-type", "accept", "mcp-session-id", "mcp-protocol-version", "mcp-method", "mcp-name")
 NULL_BODY_STATUS = {204, 205, 304}
 DEVICE_ID_LENGTH = len("dev_") + 32
@@ -126,14 +138,39 @@ def redirect_matches(registered: list[str], given: str) -> bool:
 
 
 def create_app(store: Store, settings: Settings, hub: Hub | None = None, http: httpx.AsyncClient | None = None) -> FastAPI:
-    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    async def commit_loop() -> None:
+        while True:
+            await asyncio.sleep(COMMIT_EVERY_SECONDS)
+            await commit()
+
+    async def commit() -> None:
+        if not store.dirty:
+            return
+        try:
+            await asyncio.to_thread(store.persist)
+        except Exception as exc:  # the next round tries again; the change is already in SQLite
+            store.mark_dirty()
+            log.warning("saving relay state failed (%s)", type(exc).__name__)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        task = asyncio.create_task(commit_loop())
+        try:
+            yield
+        finally:
+            task.cancel()
+            await commit()
+
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     hub = hub or Hub(settings.request_timeout)
     lock = asyncio.Lock()
     app.state.hub = hub
     app.state.store = store
+    cimd_failures: dict[str, float] = {}
 
     async def persist() -> None:
-        await asyncio.to_thread(store.persist)
+        """Writes are saved by the background commit loop, a couple of seconds later."""
+        store.mark_dirty()
 
     def pepper() -> str | None:
         value = settings.pepper
@@ -152,8 +189,9 @@ def create_app(store: Store, settings: Settings, hub: Hub | None = None, http: h
         return f"{proto}://{host}"
 
     def client_ip(request: Request) -> str:
-        forwarded = request.headers.get("x-forwarded-for", "")
-        return forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown")
+        # Modal hands the app the caller's address and drops any X-Forwarded-For it sent, so the
+        # connection's own address is the one that cannot be spoofed.
+        return request.client.host if request.client else "unknown"
 
     def json_reply(body, status: int = 200, headers: dict | None = None) -> JSONResponse:
         return JSONResponse(body, status_code=status, headers={"cache-control": "no-store", **(headers or {})})
@@ -207,13 +245,29 @@ def create_app(store: Store, settings: Settings, hub: Hub | None = None, http: h
         parts = urlsplit(url)
         if parts.scheme != "https" or not parts.hostname or not await public_host(parts.hostname):
             return None
-        client = http or httpx.AsyncClient(timeout=5.0, follow_redirects=False)
+        client = http or httpx.AsyncClient(timeout=CIMD_DEADLINE_SECONDS, follow_redirects=False)
+
+        async def read() -> bytes | None:
+            async with client.stream("GET", url, headers={"accept": "application/json"}) as response:
+                if response.status_code != 200:
+                    return None
+                stream = response.extensions.get("network_stream")
+                peer = stream.get_extra_info("server_addr") if stream is not None else None
+                # DNS could have changed since the check above: the address actually used must be public too.
+                if peer and not ipaddress.ip_address(str(peer[0]).split("%")[0]).is_global:
+                    return None
+                chunks, size = [], 0
+                async for chunk in response.aiter_bytes():
+                    size += len(chunk)
+                    if size > CIMD_MAX_BYTES:
+                        return None
+                    chunks.append(chunk)
+                return b"".join(chunks)
+
         try:
-            response = await client.get(url, headers={"accept": "application/json"})
-            if response.status_code != 200 or len(response.content) > CIMD_MAX_BYTES:
-                return None
-            doc = response.json()
-        except (httpx.HTTPError, ValueError):
+            raw = await asyncio.wait_for(read(), CIMD_DEADLINE_SECONDS)
+            doc = json.loads(raw) if raw is not None else None
+        except (TimeoutError, httpx.HTTPError, ValueError, OSError):
             return None
         finally:
             if http is None:
@@ -239,8 +293,14 @@ def create_app(store: Store, settings: Settings, hub: Hub | None = None, http: h
         if client_id.startswith("https://"):
             if found and time.time() - found[1] < CIMD_CACHE_SECONDS:
                 return found[0]
+            failed_at = cimd_failures.get(client_id)
+            if failed_at is not None and time.time() - failed_at < CIMD_FAILURE_CACHE_SECONDS:
+                return None
             doc = await fetch_cimd(client_id)
             if doc is None:
+                if len(cimd_failures) > 1000:
+                    cimd_failures.clear()
+                cimd_failures[client_id] = time.time()
                 return None
             async with lock:
                 store.put_client(client_id, doc)
@@ -409,6 +469,10 @@ def create_app(store: Store, settings: Settings, hub: Hub | None = None, http: h
 
     @app.get("/authorize")
     async def authorize_get(request: Request):
+        if pepper() is None:
+            return html_reply(message_page(NOT_SET_UP_TITLE, NOT_SET_UP_TEXT), 503)
+        if not await take(f"authorize:{keyed('ip', client_ip(request))}", AUTHORIZE_PER_IP):
+            return html_reply(message_page("Too many tries", TOO_MANY), 429)
         parsed = await parse_auth_request(request, dict(request.query_params))
         if isinstance(parsed, Response):
             return parsed
@@ -533,9 +597,9 @@ def create_app(store: Store, settings: Settings, hub: Hub | None = None, http: h
 
         if grant_type is None and form.get("token"):  # revocation (RFC 7009) on the same endpoint
             async with lock:
-                grant_id = store.drop_token(sha256_hex(form["token"]))
-                if grant_id and form.get("token_type_hint") == "refresh_token":
-                    store.revoke_grant(grant_id)
+                dropped = store.drop_token(sha256_hex(form["token"]))
+                if dropped and dropped[1] == "refresh":  # revoking a refresh token ends the whole link
+                    store.revoke_grant(dropped[0])
             await persist()
             return json_reply({})
 
@@ -570,10 +634,18 @@ def create_app(store: Store, settings: Settings, hub: Hub | None = None, http: h
             if row is None or grant is None or grant[2] != client_id:
                 return oauth_error("invalid_grant", "The refresh token is wrong, revoked or expired.")
             if row[3] is not None and store.now() - row[3] > REFRESH_GRACE:
+                # A replaced token came back late: it may have been stolen, so the link ends.
+                async with lock:
+                    store.revoke_grant(row[1])
+                await persist()
                 return oauth_error("invalid_grant", "The refresh token was already used.")
+            tokens = await issue_tokens(row[1])
             async with lock:
                 store.mark_replaced(token_hash)
-            return json_reply(await issue_tokens(row[1]))
+                # At most the presented token (for its grace period) and the new one stay live.
+                store.keep_only_refresh(row[1], (token_hash, sha256_hex(tokens["refresh_token"])))
+            await persist()
+            return json_reply(tokens)
 
         return oauth_error("unsupported_grant_type", "Use authorization_code or refresh_token.")
 
@@ -692,16 +764,23 @@ def create_app(store: Store, settings: Settings, hub: Hub | None = None, http: h
     async def connect(websocket: WebSocket):
         device_id = device_from_secret(websocket)
         if device_id is None:
-            try:
-                await websocket.send_denial_response(json_reply({"error": "unauthorized"}, 401))
-            except RuntimeError:
-                await websocket.close(code=1008)
+            # Modal cannot answer a WebSocket upgrade with an HTTP 401 (the client would see 403,
+            # which relay_client retries as a proxy problem), so accept and close with 4401.
+            await websocket.accept()
+            await websocket.close(code=UNAUTHORIZED_CLOSE_CODE, reason="Unauthorized")
             return
         await websocket.accept()
         sock = await hub.attach(device_id, websocket.send_text, lambda code, reason: websocket.close(code=code, reason=reason))
+        opened = time.monotonic()
         try:
             while True:
-                message = await websocket.receive()
+                try:
+                    message = await asyncio.wait_for(websocket.receive(), 30)
+                except TimeoutError:
+                    if time.monotonic() - opened > MAX_SOCKET_AGE_SECONDS and not sock.pending:
+                        await websocket.close(code=RECYCLE_CLOSE_CODE, reason="Reconnect")
+                        break
+                    continue
                 if message["type"] == "websocket.disconnect":
                     break
                 text = message.get("text")

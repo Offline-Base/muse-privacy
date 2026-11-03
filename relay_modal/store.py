@@ -36,8 +36,14 @@ class Store:
         self.db.executescript(SCHEMA)
         self._persist = persist or (lambda: None)
         self.now = clock
+        self.dirty = False
+
+    def mark_dirty(self) -> None:
+        self.dirty = True
 
     def persist(self) -> None:
+        """Save to durable storage (on Modal, commit the Volume). The app calls this in the background."""
+        self.dirty = False
         self._persist()
 
     def _one(self, sql: str, *args):
@@ -146,17 +152,29 @@ class Store:
     def mark_replaced(self, token_sha256: str) -> None:
         self.db.execute("UPDATE tokens SET replaced_at = ? WHERE token_sha256 = ? AND replaced_at IS NULL", (self.now(), token_sha256))
 
-    def drop_token(self, token_sha256: str) -> str | None:
-        row = self._one("SELECT grant_id FROM tokens WHERE token_sha256 = ?", token_sha256)
+    def drop_token(self, token_sha256: str) -> tuple[str, str] | None:
+        """Delete one token; (grant_id, kind) when it existed."""
+        row = self._one("SELECT grant_id, kind FROM tokens WHERE token_sha256 = ?", token_sha256)
         self.db.execute("DELETE FROM tokens WHERE token_sha256 = ?", (token_sha256,))
-        return row[0] if row else None
+        return (row[0], row[1]) if row else None
+
+    def keep_only_refresh(self, grant_id: str, keep: tuple[str, ...]) -> None:
+        """Delete the grant's other refresh tokens, so a grant never has more than the ones kept."""
+        marks = ",".join("?" for _ in keep)
+        self.db.execute(
+            f"DELETE FROM tokens WHERE grant_id = ? AND kind = 'refresh' AND token_sha256 NOT IN ({marks})",
+            (grant_id, *keep),
+        )
 
     def revoke_grant(self, grant_id: str) -> None:
         self.db.execute("DELETE FROM tokens WHERE grant_id = ?", (grant_id,))
         self.db.execute("DELETE FROM grants WHERE grant_id = ?", (grant_id,))
 
     def revoke_device(self, device_id: str) -> int:
+        """Every link to the device: grants and their tokens, codes not yet exchanged, and live pairing codes."""
         ids = [row[0] for row in self.db.execute("SELECT grant_id FROM grants WHERE device_id = ?", (device_id,))]
         for grant_id in ids:
             self.revoke_grant(grant_id)
+        self.db.execute("DELETE FROM auth_codes WHERE json_extract(data, '$.device_id') = ?", (device_id,))
+        self.db.execute("DELETE FROM codes WHERE device_id = ?", (device_id,))
         return len(ids)

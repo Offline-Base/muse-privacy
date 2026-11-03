@@ -1,10 +1,13 @@
-"""Deploy the Muse Privacy relay on Modal.
+r"""Deploy the Muse Privacy relay on Modal.
 
-    modal secret create muse-privacy-relay PAIRING_PEPPER=$(openssl rand -hex 32)   # once
-    modal deploy relay_modal/modal_app.py
+    modal secret create muse-privacy-relay PAIRING_PEPPER=$(openssl rand -hex 32) \
+        RELAY_ORIGIN=https://<workspace>--muse-privacy-relay.modal.run   # once
+    modal deploy -m relay_modal.modal_app   # from the repo root
 
 One container, always on, owns the SQLite file on a Volume and every device's WebSocket, so a
-request for a device always finds its socket. The Volume is committed after each write. The
+request for a device always finds its socket. Writes reach the Volume through a background
+commit every two seconds and at shutdown. An idle device socket is recycled every 10 minutes
+(close code 1012), so after a deploy the device moves to the new container within minutes. The
 address is https://<workspace>--muse-privacy-relay.modal.run (RELAY_ORIGIN pins it, so OAuth
 issuer and resource URLs never depend on a request's Host header).
 """

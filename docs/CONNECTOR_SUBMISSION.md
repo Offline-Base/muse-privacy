@@ -39,7 +39,7 @@ Example prompts, in a user's own words:
 
 Anything else box:
 
-> Muse Privacy gives Muse a private workspace on a device the user owns (a Mac or an NVIDIA Jetson Orin Nano). Every step that reads the user's documents runs on that device with its own model; Muse gets back only text with names and identifiers replaced by tags such as [Student A], or a summary, after an on-device privacy router and the user's own rules. Finished files with real names are written on the device and never sent. Users can link Muse as Read only. No tool sends, buys, publishes or deletes, so there are no sensitive writes. Reviewers can link with a review code on a device holding invented data; ask the support email for it.
+> Muse Privacy is the privacy part of Muse Muse, by Offline Base. It gives Muse a private workspace on a device the user owns (a Mac or an NVIDIA Jetson Orin Nano). Every step that reads the user's documents runs on that device with its own model; Muse gets back only text with names and identifiers replaced by tags such as [Student A], or a summary, after an on-device privacy router and the user's own rules. Finished files with real names are written on the device and never sent. Users can link Muse as Read only. No tool sends, buys, publishes or deletes, so there are no sensitive writes. Reviewers can link with a review code on a device holding invented data; ask the support email for it.
 
 ## Step 2: Technical specs
 

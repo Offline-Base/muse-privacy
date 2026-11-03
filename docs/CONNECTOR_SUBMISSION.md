@@ -1,6 +1,6 @@
 # Muse Connector Platform submission
 
-What to paste into Meta's connector form, what Meta's guidelines ask and how Muse Privacy meets each one, and what only the owner can do. Prepared Nov 3, 2026. Nothing has been submitted.
+What to paste into Meta's connector form, what Meta's guidelines ask and how Muse Privacy meets each one, and what only the owner can do. Prepared Nov 3, 2026. The relay runs on Offline Base's own Cloudflare account (team@offlinebase.com) since the evening of Nov 3; the old address on the owner's personal account still serves the Oct 27 to Nov 3 builds and is no longer the device's relay. Nothing has been submitted.
 
 The form, at muse.ai/platform ("Submit a connector"), as described by a third-party write-up (https://stacktr.ee/blog/muse-connector-platform.md); Meta's own pages do not list its fields. Signing in needs a work email and an emailed code. The last step accepts the Muse Connector Terms, which that write-up could not open.
 
@@ -46,7 +46,7 @@ Anything else box:
 | Field | Answer |
 |---|---|
 | Connection type | Existing MCP |
-| Hosted MCP endpoint | https://muse-privacy-relay.theethancastro.workers.dev/mcp |
+| Hosted MCP endpoint | https://muse-privacy-relay.offlinebase.workers.dev/mcp |
 | Documentation | https://muse-privacy-ten.vercel.app/connector |
 | Authentication | OAuth with PKCE (dynamic client registration and Client ID Metadata Documents; scopes `mcp`, `offline_access`) |
 

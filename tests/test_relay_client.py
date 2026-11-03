@@ -355,6 +355,29 @@ async def test_run_stops_when_another_copy_replaces_it():
     assert len(connect.calls) == 1 and sleeps == []
 
 
+async def test_run_stops_when_the_modal_relay_refuses_the_secret():
+    sleeps: list[float] = []
+
+    async def sleep(seconds):
+        sleeps.append(seconds)
+
+    connect = FakeConnect([ClosedSocket(4401), OSError("never reached")])
+    client = make_client(lambda r: httpx.Response(200), connect=connect, sleep=sleep)
+    with pytest.raises(RelayAuthError, match="rejected the device secret"):
+        await client.run()
+    assert len(connect.calls) == 1 and sleeps == []
+
+
+async def test_run_reconnects_when_the_relay_recycles_the_socket():
+    async def sleep(seconds):
+        pass
+
+    connect = FakeConnect([ClosedSocket(1012), ClosedSocket(1012)])
+    client = make_client(lambda r: httpx.Response(200), connect=connect, sleep=sleep)
+    await client.run(attempts=2)
+    assert len(connect.calls) == 2
+
+
 async def test_run_reconnects_after_other_close_codes():
     async def sleep(seconds):
         pass

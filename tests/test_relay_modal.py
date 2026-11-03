@@ -299,12 +299,12 @@ def test_wrong_device_secret_is_refused(client):
     device = register(client)
     wrong = device["secret"][:-4] + "AAAA"
     assert client.post("/device/pair", headers={"authorization": f"Bearer {wrong}"}).status_code == 401
-    from starlette.testclient import WebSocketDenialResponse
     from starlette.websockets import WebSocketDisconnect
 
-    with pytest.raises((WebSocketDenialResponse, WebSocketDisconnect)):
-        with client.websocket_connect("/device/connect", headers={"authorization": f"Bearer {wrong}"}):
-            pass
+    with client.websocket_connect("/device/connect", headers={"authorization": f"Bearer {wrong}"}) as ws:
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_text()
+    assert closed.value.code == relay.UNAUTHORIZED_CLOSE_CODE
 
 
 def test_newer_device_connection_replaces_the_old(client):
@@ -333,3 +333,89 @@ def test_client_id_metadata_document(tmp_path, monkeypatch):
         assert page.status_code == 200 and "Published by <strong>app.example.org</strong>" in page.text
         assert start(c, url, challenge, redirect="https://app.example.org/other")[0].status_code == 400
         assert start(c, "https://app.example.org/missing.json", challenge, redirect="https://app.example.org/cb")[0].status_code == 400
+
+
+def test_refresh_never_forks_and_a_late_replay_ends_the_link(client):
+    device = register(client)
+    tokens = link(client, device["secret"])
+    now = [client.store.now()]
+    client.store.now = lambda: now[0]
+    data = {"grant_type": "refresh_token", "refresh_token": tokens["refresh_token"], "client_id": tokens["client_id"]}
+    for _ in range(4):  # retries inside the grace period
+        assert client.post("/oauth/token", data=data).status_code == 200
+    live = client.store.db.execute("SELECT COUNT(*) FROM tokens WHERE kind = 'refresh'").fetchone()[0]
+    assert live == 2  # the presented one and the newest
+    now[0] += 61
+    assert client.post("/oauth/token", data=data).status_code == 400
+    assert client.store.db.execute("SELECT COUNT(*) FROM grants").fetchone()[0] == 0
+
+
+def test_revoking_a_refresh_token_ends_the_link(client):
+    device = register(client)
+    tokens = link(client, device["secret"])
+    assert client.post("/oauth/token", data={"token": tokens["refresh_token"]}).status_code == 200
+    assert mcp(client, tokens["access_token"], CALL).status_code == 401
+
+
+def test_unlink_also_kills_codes_not_yet_used(client):
+    device = register(client)
+    reg = new_client(client)
+    verifier, challenge = pkce()
+    page, params = start(client, reg["client_id"], challenge)
+    r = submit(client, page, params, pair(client, device["secret"])["code"])
+    code = parse_qs(urlsplit(r.headers["location"]).query)["code"][0]
+    review = pair(client, device["secret"], review=True)["code"]
+    client.post("/device/unlink", headers={"authorization": f"Bearer {device['secret']}"})
+    exchange = client.post("/oauth/token", data={"grant_type": "authorization_code", "code": code, "redirect_uri": REDIRECT,
+                                                 "client_id": reg["client_id"], "code_verifier": verifier})
+    assert exchange.status_code == 400
+    page, params = start(client, reg["client_id"], challenge)
+    assert submit(client, page, params, review).status_code == 400
+
+
+def test_link_page_requests_are_limited_per_address(client, monkeypatch):
+    monkeypatch.setattr(relay, "AUTHORIZE_PER_IP", 3)
+    reg = new_client(client)
+    _, challenge = pkce()
+    statuses = [start(client, reg["client_id"], challenge)[0].status_code for _ in range(4)]
+    assert statuses == [200, 200, 200, 429]
+
+
+def test_metadata_document_is_capped_and_failures_are_cached(tmp_path, monkeypatch):
+    url = "https://big.example.org/client.json"
+    calls = []
+
+    def handler(req):
+        calls.append(str(req.url))
+        return httpx.Response(200, content=b"{" + b" " * (relay.CIMD_MAX_BYTES + 10) + b"}")
+
+    store = Store(tmp_path / "relay.db")
+    app = create_app(store, Settings(pepper=PEPPER, origin=ORIGIN), http=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    monkeypatch.setattr(relay.socket, "getaddrinfo", lambda *a, **k: [(None, None, None, None, ("93.184.216.34", 443))])
+    with TestClient(app, base_url=ORIGIN) as c:
+        _, challenge = pkce()
+        assert start(c, url, challenge, redirect="https://big.example.org/cb")[0].status_code == 400
+        assert start(c, url, challenge, redirect="https://big.example.org/cb")[0].status_code == 400
+    assert len(calls) == 1
+
+
+def test_private_addresses_are_never_fetched(tmp_path, monkeypatch):
+    calls = []
+    store = Store(tmp_path / "relay.db")
+    transport = httpx.MockTransport(lambda req: calls.append(1) or httpx.Response(404))
+    app = create_app(store, Settings(pepper=PEPPER, origin=ORIGIN), http=httpx.AsyncClient(transport=transport))
+    monkeypatch.setattr(relay.socket, "getaddrinfo", lambda *a, **k: [(None, None, None, None, ("10.0.0.5", 443))])
+    with TestClient(app, base_url=ORIGIN) as c:
+        _, challenge = pkce()
+        assert start(c, "https://inside.example.org/c.json", challenge, redirect="https://inside.example.org/cb")[0].status_code == 400
+    assert calls == []
+
+
+def test_writes_reach_durable_storage_in_the_background(tmp_path):
+    saved = []
+    store = Store(tmp_path / "relay.db", persist=lambda: saved.append(1))
+    app = create_app(store, Settings(pepper=PEPPER, origin=ORIGIN))
+    with TestClient(app, base_url=ORIGIN) as c:
+        register(c)
+        assert store.dirty
+    assert saved and not store.dirty  # the shutdown commit saved it

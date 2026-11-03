@@ -6,12 +6,14 @@ The form, at muse.ai/platform ("Submit a connector"), as described by a third-pa
 
 ## Before submitting (owner)
 
-1. **Pick the support email.** Replace `__SUPPORT_EMAIL__` in `site/connector.html`, `site/privacy.html` and `site/terms.html` (`sed -i '' 's/__SUPPORT_EMAIL__/you@example.com/g' site/*.html`), then deploy the site. Until then the pages must not go live.
+1. **Support email: done.** team@offlinebase.com is in `site/connector.html`, `site/privacy.html` and `site/terms.html` (Nov 3). Deploy the site so the pages go live.
 2. **Read the privacy policy and terms** (`site/privacy.html`, `site/terms.html`). They were written from the code and docs, not by a lawyer. They promise: no sale, ads, profiles or model training on connector data; telling users and Meta within 48 hours of an incident; replies within 2 business days.
-3. **Deploy the relay** from this branch, so the read-only choice and review codes are live (`relay/deploy.sh`, or `npx wrangler deploy` with the OAuth KV id that the main checkout's uncommitted `relay/wrangler.jsonc` holds). The relay stores grants made before this change without `readOnly`; those links keep full access.
+3. **Deploy the relay** from this branch, so the read-only choice and review codes are live: `cd ~/muse-privacy-lanes/g-connector/relay && npx wrangler deploy`. That worktree's uncommitted `wrangler.jsonc` already has the real OAuth KV id (never commit it). Roll back with `npx wrangler rollback 08ca4d91-8de9-4f2b-ab17-8c33b13a1a2a` (the Oct 27 build). Existing links keep full access.
 4. **Set up a reviewer device** that stays on through review: a Jetson or a Mac with `DEVICE_ONLY=1`, the invented `demo/` folders only, and Always approve on (so reviewers are not stuck on results waiting for an OK). Then run `python -m base.connector.relay_client pair --review` there. The code links up to 20 Muse accounts for 14 days. A normal `pair` on that device replaces it; `unlink` revokes every link it made.
 5. **Confirm the entity and track.** CLAUDE.md says startup track; the form asks for company or developer and a work email.
 6. **Make the docs reachable.** The GitHub repo is private, so the form's documentation link is the site's `/connector` page, not the repo.
+
+Per-client setup (Claude, ChatGPT, Codex, Muse Code, the Muse app): docs/CONNECT_CLIENTS.md.
 
 ## Step 1: Overview
 
@@ -23,7 +25,7 @@ The form, at muse.ai/platform ("Submit a connector"), as described by a third-pa
 | Connector icon | `site/icon-512.png` (512 by 512 PNG) or `site/icon-512.svg` |
 | Payments | Does not accept payments |
 | Your name / work email | Owner |
-| Support email or URL | the support email from step 1 above |
+| Support email or URL | team@offlinebase.com |
 | Privacy policy URL | https://muse-privacy-ten.vercel.app/privacy |
 | Terms of service URL | https://muse-privacy-ten.vercel.app/terms |
 

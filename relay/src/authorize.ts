@@ -1,6 +1,6 @@
 import { AuthorizationError, CimdFetchError } from "@cloudflare/workers-oauth-provider";
 import { SCOPE, type Env, type GrantProps } from "./env";
-import { messagePage, pairingPage } from "./page";
+import { type Access, accessFrom, messagePage, pairingPage } from "./page";
 import { GATE, codeKey, ipKey, normalizeCode, pepper } from "./pairing";
 
 /**
@@ -9,7 +9,8 @@ import { GATE, codeKey, ipKey, normalizeCode, pepper } from "./pairing";
  *
  * GET validates the request and starts a consent transaction (the library binds its handle to
  * this browser with a cookie). POST checks the code first, so a typo keeps the handle usable,
- * then approves the transaction and completes authorization with props {deviceId}.
+ * then approves the transaction and completes authorization with props {deviceId, readOnly}.
+ * readOnly is the user's "Read only" choice on the page (the Muse Connector Platform's 3.1).
  */
 
 const WRONG_CODE = "That code did not work. A code works once and lasts 10 minutes, so make a new one on your device and try again.";
@@ -44,11 +45,11 @@ function html(body: string, status = 200, headers?: Headers): Response {
 /** The form posts back to the same URL, so the original authorization query comes with it. */
 const formAction = (request: Request) => `/authorize${new URL(request.url).search}`;
 
-async function show(request: Request, env: Env, handle?: string, error?: string, status = 200): Promise<Response> {
+async function show(request: Request, env: Env, handle?: string, error?: string, status = 200, access: Access = "full"): Promise<Response> {
   const oauth = env.OAUTH_PROVIDER;
   const authRequest = await oauth.parseAuthRequest(request);
   const details = await oauth.describeConsent(authRequest);
-  if (handle) return html(pairingPage(details, handle, formAction(request), error), status);
+  if (handle) return html(pairingPage(details, handle, formAction(request), error, access), status);
   const consent = await oauth.beginConsent(authRequest);
   return html(pairingPage(details, consent.handle, formAction(request)), 200, consent.headers);
 }
@@ -70,13 +71,16 @@ async function submit(request: Request, env: Env): Promise<Response> {
   if (!key) return html(messagePage(NOT_SET_UP_TITLE, NOT_SET_UP_TEXT), 503);
   const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
   const code = normalizeCode(String(form.get("code") ?? ""));
+  const access = accessFrom(form.get("access"));
   const result = await env.PAIRING.getByName(GATE).redeem(await ipKey(key, ip), code ? await codeKey(key, code) : null);
   if (!result.ok) {
-    return result.reason === "limited" ? show(request, env, handle, TOO_MANY, 429) : show(request, env, handle, WRONG_CODE, 400);
+    return result.reason === "limited"
+      ? show(request, env, handle, TOO_MANY, 429, access)
+      : show(request, env, handle, WRONG_CODE, 400, access);
   }
 
   const approved = await oauth.approveConsent(request, handle, { scope: [SCOPE] });
-  const props: GrantProps = { deviceId: result.deviceId };
+  const props: GrantProps = { deviceId: result.deviceId, readOnly: access === "read" };
   const { redirectTo } = await oauth.completeAuthorization({
     request: approved.request,
     userId: result.deviceId,

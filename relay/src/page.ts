@@ -42,6 +42,16 @@ input[name=code] {
 }
 input[name=code]:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
 .muted.help { margin: 8px 0 0; }
+fieldset { border: 0; padding: 0; margin: 16px 0 0; }
+legend { font-weight: 600; margin: 0 0 8px; padding: 0; }
+label.choice {
+  display: flex; gap: 12px; align-items: flex-start; font-weight: 400; margin: 0 0 8px;
+  padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+}
+label.choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+label.choice input { margin: 4px 0 0; accent-color: var(--accent); }
+label.choice strong { display: block; font-weight: 600; }
+label.choice span { color: var(--text-2); font-size: 13px; }
 .error { color: var(--danger); margin: 8px 0 0; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
 button { border: 0; border-radius: 999px; padding: 10px 20px; font: inherit; font-weight: 600; cursor: pointer; }
@@ -71,8 +81,27 @@ ${content}
 </html>`;
 }
 
-/** Ask for the pairing code. `action` is /authorize plus the original query, so a retry can show this again. */
-export function pairingPage(details: ConsentDescription, handle: string, action: string, error?: string): string {
+/** What the user lets Muse do with this link. "read" makes a read-only grant (./readonly.ts). */
+export type Access = "full" | "read";
+
+export const accessFrom = (value: unknown): Access => (value === "read" ? "read" : "full");
+
+function accessChoice(access: Access): string {
+  const option = (value: Access, title: string, text: string) =>
+    `<label class="choice"><input type="radio" name="access" value="${value}"${access === value ? " checked" : ""}>` +
+    `<span><strong>${title}</strong>${text}</span></label>`;
+  return `<fieldset>
+<legend>What Muse can do on your device</legend>
+${option("full", "Full access", "List, search and ask, and also start tasks, save files and start dreaming. Every result still passes the privacy checks.")}
+${option("read", "Read only", "List, search and ask only. Muse cannot start tasks, save files or start dreaming. You can link again later to change this.")}
+</fieldset>`;
+}
+
+/**
+ * Ask for the pairing code and what Muse may do. `action` is /authorize plus the original query,
+ * so a retry can show this again; `access` keeps the user's choice across a mistyped code.
+ */
+export function pairingPage(details: ConsentDescription, handle: string, action: string, error?: string, access: Access = "full"): string {
   const client = escapeHtml(details.clientName);
   const origin = details.clientDomain
     ? `Published by <strong>${escapeHtml(details.clientDomain)}</strong>.`
@@ -94,6 +123,7 @@ ${loopback}
 <input id="code" name="code" required maxlength="11" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="ABCD2345" aria-describedby="code-help"${error ? ' aria-invalid="true"' : ""} autofocus>
 <p class="muted help" id="code-help">8 letters and numbers, shown on your device.</p>
 ${problem}
+${accessChoice(access)}
 <div class="actions">
 <button class="primary" type="submit" name="decision" value="link">Link this device</button>
 <button class="secondary" type="submit" name="decision" value="cancel" formnovalidate>Cancel</button>

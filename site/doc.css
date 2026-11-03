@@ -1,0 +1,23 @@
+/* Plain document pages: connector docs, privacy policy, terms. Uses the tokens in styles.css. */
+.doc { max-width: 760px; margin: 0 auto; padding: 56px max(var(--pad), 20px) 0; }
+.doc .back { display: inline-block; margin-bottom: 32px; color: var(--text-3); font-size: 14px; }
+.doc .back:hover { color: var(--text); }
+.doc h1 { font-size: 40px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 12px; }
+.doc .lede { color: var(--text-2); font-size: 18px; margin: 0 0 8px; }
+.doc .stamp { color: var(--text-4); font-size: 14px; margin: 0 0 40px; }
+.doc h2 { font-size: 22px; font-weight: 600; margin: 44px 0 12px; }
+.doc h3 { font-size: 17px; font-weight: 600; margin: 28px 0 8px; }
+.doc p, .doc li { color: var(--text-2); line-height: 1.6; }
+.doc p + p { margin-top: 12px; }
+.doc ul, .doc ol { padding-left: 22px; margin: 8px 0; }
+.doc li + li { margin-top: 6px; }
+.doc strong { color: var(--text); font-weight: 600; }
+.doc a { color: var(--blue); }
+.doc code { font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel); padding: 1px 6px; border-radius: 6px; }
+.doc table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+.doc th, .doc td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--text-2); }
+.doc th { color: var(--text); font-weight: 600; background: var(--panel); }
+.doc .tag { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+.doc .tag.read { background: var(--blue-soft); color: var(--blue); }
+.doc .tag.write { background: var(--wait-soft); color: #8A5A00; }
+.doc .note { background: var(--panel); border-radius: 12px; padding: 16px 20px; margin: 16px 0; }

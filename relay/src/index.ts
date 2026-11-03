@@ -3,7 +3,8 @@ import { handleAuthorize } from "./authorize";
 import { randomBase64Url, randomHex, sha256Hex } from "./crypto";
 import { DeviceHub, type ForwardResponse } from "./device";
 import { SCOPE, type Env, type GrantProps } from "./env";
-import { CODE_TTL_SECONDS, GATE, PairingGate, codeKey, ipKey, newCode, pepper } from "./pairing";
+import { CODE_TTL_SECONDS, GATE, PairingGate, REVIEW_TTL_SECONDS, REVIEW_USES, codeKey, ipKey, newCode, pepper } from "./pairing";
+import { asksToolList, blockWrite, filterToolList } from "./readonly";
 import { toolResultFor } from "./toolresult";
 
 export { DeviceHub, PairingGate };
@@ -12,11 +13,13 @@ export { DeviceHub, PairingGate };
  * Muse Privacy relay. Muse reaches the user's device through here; the device dials out.
  *
  *   POST /device/register   new device id + secret, returned once (only the secret's hash is kept)
- *   POST /device/pair       device asks for an 8 character pairing code (bearer secret)
+ *   POST /device/pair       device asks for an 8 character pairing code (bearer secret); with
+ *                           {"review": true}, a review code: 20 links within 14 days
  *   POST /device/unlink     device revokes every Muse link bound to it (bearer secret)
  *   GET  /device/connect    device WebSocket (bearer secret); a new connection replaces the old one
  *   GET/POST /authorize     OAuth page that asks for the pairing code
- *   POST/DELETE /mcp        Muse's MCP requests (OAuth bearer), forwarded to the device as frames
+ *   POST/DELETE /mcp        Muse's MCP requests (OAuth bearer), forwarded to the device as frames;
+ *                           on a read-only link, writes are answered here and tools/list is filtered
  *   /oauth/token, /oauth/register, /.well-known/*   served by the OAuth library
  *
  * Muse's client may identify itself by dynamic client registration or by a Client ID Metadata
@@ -84,10 +87,15 @@ async function pair(request: Request, env: Env): Promise<Response> {
   if (!key) return notSetUp();
   const device = await authDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
+  // {"review": true} asks for a review code (./pairing.ts); any other body, or none, a one-time code.
+  const input = (await request.json().catch(() => null)) as { review?: unknown } | null;
+  const review = input !== null && typeof input === "object" && input.review === true;
+  const ttl = review ? REVIEW_TTL_SECONDS : CODE_TTL_SECONDS;
+  const uses = review ? REVIEW_USES : 1;
   const gate = env.PAIRING.getByName(GATE);
   for (let attempt = 0; attempt < 3; attempt++) {
     const code = newCode();
-    if (await gate.issue(device.deviceId, await codeKey(key, code))) return json({ code, expires_in: CODE_TTL_SECONDS });
+    if (await gate.issue(device.deviceId, await codeKey(key, code), ttl, uses)) return json({ code, expires_in: ttl, uses });
   }
   return json({ error: "try again" }, 503);
 }
@@ -149,12 +157,20 @@ const mcpHandler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // No server-initiated stream in v1.
     if (request.method !== "POST" && request.method !== "DELETE") return notAllowed("POST, DELETE");
-    const deviceId = (ctx as ExecutionContext<GrantProps>).props?.deviceId;
+    const props = (ctx as ExecutionContext<GrantProps>).props;
+    const deviceId = props?.deviceId;
     if (typeof deviceId !== "string" || !DEVICE_ID.test(deviceId)) return json({ error: "invalid_token" }, 401);
+    const readOnly = props.readOnly === true;
 
     if (Number(request.headers.get("content-length") ?? "0") > MAX_BODY_BYTES) return json({ error: "request too large" }, 413);
     const body = await request.text();
     if (body.length > MAX_BODY_BYTES) return json({ error: "request too large" }, 413);
+
+    // A read-only link never sends a write tool to the device (./readonly.ts).
+    if (readOnly && request.method === "POST") {
+      const blocked = blockWrite(body);
+      if (blocked) return blocked;
+    }
 
     const headers: Record<string, string> = {};
     for (const name of FORWARDED) {
@@ -165,6 +181,9 @@ const mcpHandler = {
     if (reply.status >= 400 && request.method === "POST") {
       const readable = toolResultFor(reply.status, body);
       if (readable) return readable;
+    }
+    if (readOnly && request.method === "POST" && reply.status === 200 && asksToolList(body)) {
+      return toResponse({ ...reply, body: filterToolList(reply.body, body) });
     }
     return toResponse(reply);
   },

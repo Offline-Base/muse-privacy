@@ -2,7 +2,7 @@
 
 Every client connects to the same address and links to your device the same way:
 
-- **Connector URL:** `https://muse-privacy-relay.theethancastro.workers.dev/mcp`
+- **Connector URL:** `https://muse-privacy-relay.offlinebase.workers.dev/mcp`
 - **Sign-in:** OAuth. The client opens a "Link your device" page; type a pairing code from the device.
 - **Pairing code:** on the device, `uv run python -m base.connector.relay_client pair` (8 characters, one use, 10 minutes). Make a new code for each client.
 - **Before you add or restart a client, the device must be online.** If the device is off when a client starts, the client marks the connector as failed for that session; restart the client once the device is back. On this laptop the LaunchAgent keeps it up (`docs/UPTIME.md`).
@@ -27,7 +27,7 @@ To add it on another account: claude.ai, Customize > Connectors > Add custom con
 Claude Code on a machine signed in with a different account:
 
 ```sh
-claude mcp add --transport http --scope user muse-privacy https://muse-privacy-relay.theethancastro.workers.dev/mcp
+claude mcp add --transport http --scope user muse-privacy https://muse-privacy-relay.offlinebase.workers.dev/mcp
 claude mcp login muse-privacy      # or /mcp inside a session
 ```
 
@@ -36,7 +36,7 @@ claude mcp login muse-privacy      # or /mcp inside a session
 Set up on this Mac (`~/.codex/config.toml`, `[mcp_servers.muse-privacy]`). On another machine:
 
 ```sh
-codex mcp add muse-privacy --url https://muse-privacy-relay.theethancastro.workers.dev/mcp
+codex mcp add muse-privacy --url https://muse-privacy-relay.offlinebase.workers.dev/mcp
 codex mcp login muse-privacy
 ```
 
@@ -50,7 +50,7 @@ Set up on this Mac: `~/.config/muse/settings.json` has
 "mcp_servers": {
   "muse-privacy": {
     "transport": "streamable_http",
-    "url": "https://muse-privacy-relay.theethancastro.workers.dev/mcp",
+    "url": "https://muse-privacy-relay.offlinebase.workers.dev/mcp",
     "enabled": true,
     "mode": "optional"
   }
@@ -74,7 +74,7 @@ ChatGPT asks before write tools (run_private_task, save_on_device, run_dreaming)
 
 Paired Oct 28 as a custom connector. Meta does not review custom connectors, so this works today without the platform listing. To add it again, in a Muse chat:
 
-> Create a custom connector for a remote MCP server, then connect to it. Name: Muse Privacy. Transport: remote streamable HTTP. URL: https://muse-privacy-relay.theethancastro.workers.dev/mcp. Auth: OAuth (the server supports dynamic client registration). Do not ask me for an API key or header.
+> Create a custom connector for a remote MCP server, then connect to it. Name: Muse Privacy. Transport: remote streamable HTTP. URL: https://muse-privacy-relay.offlinebase.workers.dev/mcp. Auth: OAuth (the server supports dynamic client registration). Do not ask me for an API key or header.
 
 Tap Connect, then type a pairing code. The listing on Meta's Connector Platform (docs/CONNECTOR_SUBMISSION.md) is what lets other Muse users find it.
 

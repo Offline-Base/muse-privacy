@@ -14,6 +14,9 @@ const MCP_HEADERS = {
   accept: "application/json, text/event-stream",
   "mcp-protocol-version": "2025-06-18",
   "mcp-session-id": "session-abc",
+  // MCP 2026-07-28 headers: forwarded so the device's MCP library accepts the request.
+  "mcp-method": "tools/call",
+  "mcp-name": "list_documents",
 };
 
 describe("OAuth metadata", () => {

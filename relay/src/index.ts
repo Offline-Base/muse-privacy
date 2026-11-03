@@ -34,7 +34,8 @@ const DEVICE_ID = /^dev_[0-9a-f]{32}$/;
 /** The secret names its device, so the relay needs no lookup table: dev_<32 hex>.<43 base64url>. */
 const DEVICE_SECRET = /^(dev_[0-9a-f]{32})\.[A-Za-z0-9_-]{43}$/;
 /** MCP request headers the device's server needs. Lowercase in frames. Authorization never goes down. */
-const FORWARDED = ["content-type", "accept", "mcp-session-id", "mcp-protocol-version"];
+/** mcp-method and mcp-name are the MCP 2026-07-28 request headers (ChatGPT sends them); the device's MCP library refuses a request without them. */
+const FORWARDED = ["content-type", "accept", "mcp-session-id", "mcp-protocol-version", "mcp-method", "mcp-name"];
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const REGISTRATIONS_PER_IP = 10;
 const NULL_BODY_STATUS = new Set([204, 205, 304]);

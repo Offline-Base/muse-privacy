@@ -16,6 +16,14 @@ import type { Env } from "./env";
 export const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 export const CODE_LENGTH = 8;
 export const CODE_TTL_SECONDS = 600;
+/**
+ * A review code, for a connector directory's reviewers (POST /device/pair with {"review": true}):
+ * it links up to REVIEW_USES Muse accounts to the device within REVIEW_TTL_SECONDS. Meant only for
+ * a device that holds invented data. Like any code, a newer code for the device replaces it, and
+ * /device/unlink revokes every link it made.
+ */
+export const REVIEW_TTL_SECONDS = 14 * 24 * 3600;
+export const REVIEW_USES = 20;
 /** At most this many tries of one code value, from any IP, in each window. */
 export const MAX_ATTEMPTS_PER_CODE = 5;
 /** At most this many tries from one IP in each window. A school or office NAT shares one IP. */
@@ -58,6 +66,9 @@ export class PairingGate extends DurableObject<Env> {
         "CREATE TABLE IF NOT EXISTS codes (code_hash TEXT PRIMARY KEY, device_id TEXT NOT NULL, expires_at INTEGER NOT NULL)",
       );
       sql.exec("CREATE INDEX IF NOT EXISTS codes_by_device ON codes (device_id)");
+      // Added for review codes; a table from before keeps working with one use per code.
+      const columns = sql.exec<{ name: string }>("PRAGMA table_info(codes)").toArray().map((row) => row.name);
+      if (!columns.includes("uses_left")) sql.exec("ALTER TABLE codes ADD COLUMN uses_left INTEGER NOT NULL DEFAULT 1");
       sql.exec("CREATE TABLE IF NOT EXISTS hits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL)");
     });
   }
@@ -89,17 +100,21 @@ export class PairingGate extends DurableObject<Env> {
     return true;
   }
 
-  /** Store a device's new code (by hash). Only the newest code per device works. False on a collision. */
-  async issue(deviceId: string, codeHash: string): Promise<boolean> {
+  /**
+   * Store a device's new code (by hash), good for `uses` links within `ttlSeconds`. Only the newest
+   * code per device works. False on a collision.
+   */
+  async issue(deviceId: string, codeHash: string, ttlSeconds = CODE_TTL_SECONDS, uses = 1): Promise<boolean> {
     const now = Date.now();
     this.sweep(now);
     if (this.ctx.storage.sql.exec("SELECT 1 FROM codes WHERE code_hash = ?", codeHash).toArray().length) return false;
     this.ctx.storage.sql.exec("DELETE FROM codes WHERE device_id = ?", deviceId);
     this.ctx.storage.sql.exec(
-      "INSERT INTO codes (code_hash, device_id, expires_at) VALUES (?, ?, ?)",
+      "INSERT INTO codes (code_hash, device_id, expires_at, uses_left) VALUES (?, ?, ?, ?)",
       codeHash,
       deviceId,
-      now + CODE_TTL_SECONDS * 1000,
+      now + ttlSeconds * 1000,
+      Math.max(1, Math.floor(uses)),
     );
     return true;
   }
@@ -107,7 +122,7 @@ export class PairingGate extends DurableObject<Env> {
   /**
    * One pairing attempt from `ipHash` with the code whose hash is `codeHash` (null when the
    * input was not even shaped like a code). Counts against the IP and the code value, then uses
-   * the code up if it is live. SQL calls are synchronous, so the whole check runs as one step.
+   * one use of the code if it is live (a one-time code is then gone). SQL calls are synchronous, so the whole check runs as one step.
    */
   async redeem(ipHash: string, codeHash: string | null): Promise<Redeemed> {
     const now = Date.now();
@@ -119,15 +134,16 @@ export class PairingGate extends DurableObject<Env> {
     if (!codeHash) return { ok: false, reason: "wrong" };
 
     const row = this.ctx.storage.sql
-      .exec<{ code_hash: string; device_id: string; expires_at: number }>(
-        "SELECT code_hash, device_id, expires_at FROM codes WHERE code_hash = ?",
+      .exec<{ code_hash: string; device_id: string; expires_at: number; uses_left: number }>(
+        "SELECT code_hash, device_id, expires_at, uses_left FROM codes WHERE code_hash = ?",
         codeHash,
       )
       .toArray()[0];
     // The lookup key is a hash of the guess, so its timing says nothing about the live code;
     // the stored hash is still compared in constant time before it counts.
     if (!row || row.expires_at <= now || !sameText(row.code_hash, codeHash)) return { ok: false, reason: "wrong" };
-    this.ctx.storage.sql.exec("DELETE FROM codes WHERE code_hash = ?", codeHash);
+    if (row.uses_left > 1) this.ctx.storage.sql.exec("UPDATE codes SET uses_left = uses_left - 1 WHERE code_hash = ?", codeHash);
+    else this.ctx.storage.sql.exec("DELETE FROM codes WHERE code_hash = ?", codeHash);
     return { ok: true, deviceId: row.device_id };
   }
 }

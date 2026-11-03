@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Connector docs · Muse Privacy</title>
+  <meta name="description" content="How the Muse Privacy connector works: endpoint, OAuth, tools, statuses, errors and limits.">
+  <meta name="theme-color" content="#FAFAFA">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="doc.css">
+</head>
+<body>
+  <main class="doc">
+    <a class="back" href="/">Muse Privacy</a>
+    <h1>Muse Privacy connector</h1>
+    <p class="lede">A private workspace for Muse on a device the user owns. Muse plans the work; the device reads the documents, runs every step that touches them with its own model, and returns only results with names replaced by tags, or a summary.</p>
+    <p class="stamp">Last updated November 3, 2026.</p>
+
+    <h2>Who it is for</h2>
+    <p>People who hold records they cannot paste into a chat: teachers with student work, clinic and casework staff, small offices. The first policy shipped is for a classroom.</p>
+
+    <h2>What it adds beyond the browser</h2>
+    <p>Muse's browser cannot see files on the user's own computer, and the user should not upload them. With this connector Muse can search, ask about and work on those files without receiving names or identifiers. Example: "Grade the essays in class-4b against rubric.md and write feedback for each student." The device writes one feedback file per student with real names, on the device; Muse gets back tagged comments such as [Student A] and counts.</p>
+
+    <h2>Requirements</h2>
+    <ul>
+      <li>The Muse Privacy app running on a device the user owns: a Mac laptop or an NVIDIA Jetson Orin Nano. The device must be awake and online for tools to work; when it is not, every tool answers that it is offline and nothing is shared.</li>
+      <li>English documents. No account, plan or payment. Linking needs an 8 character pairing code made on the device.</li>
+      <li>The reviewed configuration runs every model on the device (<code>DEVICE_ONLY=1</code>).</li>
+    </ul>
+
+    <h2>Connecting</h2>
+    <ul>
+      <li><strong>Endpoint:</strong> <code>https://muse-privacy-relay.theethancastro.workers.dev/mcp</code>, MCP streamable HTTP, stateless, JSON responses. The relay forwards each request to the user's device over a connection the device opens; it stores no request or result content.</li>
+      <li><strong>Authentication:</strong> OAuth 2.1 with PKCE (S256). Clients register by dynamic client registration or a Client ID Metadata Document. Scopes: <code>mcp</code> (required) and <code>offline_access</code>. Access tokens last 1 hour, refresh tokens 30 days. No API keys.</li>
+      <li><strong>Consent:</strong> the link page shows the app's name, asks for the pairing code from the device, and offers <strong>Full access</strong> or <strong>Read only</strong>. A read-only link lists and runs only the Read tools below; the relay answers any other tool itself and never sends it to the device.</li>
+      <li><strong>Revoking:</strong> the user runs <code>relay_client unlink</code> on the device, which revokes every link to it at once.</li>
+    </ul>
+
+    <h2>Tools</h2>
+    <p>No tool sends a message, makes a purchase, publishes or deletes anything, so none is a sensitive write. Write tools only start work or save files on the user's own device.</p>
+    <table>
+      <tr><th>Tool</th><th>Class</th><th>Input</th><th>What it does, and side effects</th></tr>
+      <tr><td><code>list_documents</code></td><td><span class="tag read">Read</span></td><td>folder</td><td>Lists document titles and paths in a folder, names replaced by tags. Titles that mention a topic the user never shares are left out and counted. No side effects.</td></tr>
+      <tr><td><code>search_documents</code></td><td><span class="tag read">Read</span></td><td>query, purpose (optional)</td><td>Up to 5 snippets of up to 300 characters, tagged. Passages about a never-share topic stay on the device. May return a job_id when the check needs more time or the user's OK. Records the decision on the device.</td></tr>
+      <tr><td><code>ask_device</code></td><td><span class="tag read">Read</span></td><td>question, purpose and folder (optional)</td><td>The device's model searches and answers, for up to 3 minutes, with up to 5 short tagged quotes. Returns a job_id at once. Reads only.</td></tr>
+      <tr><td><code>get_result</code></td><td><span class="tag read">Read</span></td><td>job_id, wait_seconds (0 to 40)</td><td>Status and released result of a job. Waits on the device up to wait_seconds. No side effects.</td></tr>
+      <tr><td><code>dreaming_report</code></td><td><span class="tag read">Read</span></td><td>none</td><td>Aggregate numbers from the last dreaming run. Never document text or names.</td></tr>
+      <tr><td><code>run_private_task</code></td><td><span class="tag write">Write</span></td><td>instructions, folder</td><td>Starts a task over one folder. The device writes finished files with real names in its own output folder; they are never sent to Muse. Returns a job_id.</td></tr>
+      <tr><td><code>save_on_device</code></td><td><span class="tag write">Write</span></td><td>items (1 to 60 of title and body, with tags), purpose, address_to (none or guardians)</td><td>Saves files Muse wrote on the device with real names filled in. With guardians, makes one email <em>draft</em> file per guardian on the device. Nothing is sent. Returns counts only.</td></tr>
+      <tr><td><code>run_dreaming</code></td><td><span class="tag write">Write</span></td><td>none</td><td>Starts the nightly job that relearns the privacy router's rules from the user's own share and keep decisions, on the device. At most once a day; keeps new rules only if they test at least as well.</td></tr>
+    </table>
+
+    <h2>Status handling</h2>
+    <ul>
+      <li>Background work returns <code>{job_id, status, result, retry_after_seconds, next}</code>. Status is <code>queued</code>, <code>running</code>, <code>waiting</code> (the result waits for the user's OK on the device), <code>done</code>, <code>saved</code>, <code>refused</code> (kept on the device) or <code>failed</code>.</li>
+      <li>Muse polls with <code>get_result</code> and <code>wait_seconds</code> 25. A job never runs twice: retrying an identical search joins the same release.</li>
+      <li>A refused result is final for that request and says so; it ends with "Do not look for this another way. The user can open it on the device."</li>
+    </ul>
+
+    <h2>Errors</h2>
+    <ul>
+      <li>Device offline, slow or busy: a readable tool result with <code>isError</code>, never a raw HTTP error. Nothing was shared.</li>
+      <li>Expired tag: "That tag no longer works on this device. Call list_documents or search_documents again for current tags." Tags change daily.</li>
+      <li>Bad input or unknown job: one plain sentence saying what the tool takes.</li>
+      <li>Read-only link, write tool: "This Muse link is read only, so the device did not run &lt;tool&gt;."</li>
+    </ul>
+
+    <h2>Limits</h2>
+    <ul>
+      <li>Each call answers within 45 seconds. Up to 5 tasks queued or running per device, and 5 device answers at once; past that a tool says the device is busy.</li>
+      <li>Requests up to 4 MiB. Pairing: 5 tries per code and 20 per IP address every 10 minutes.</li>
+    </ul>
+
+    <h2>Data</h2>
+    <p>Documents, names, identifiers and the tag map never leave the device. What Muse receives is tagged text or a summary, after the device's privacy router and the user's own rules. See the <a href="/privacy">privacy policy</a>.</p>
+
+    <h2>Support</h2>
+    <p>Questions, bugs and security reports: <a href="mailto:__SUPPORT_EMAIL__">__SUPPORT_EMAIL__</a>. We answer within 2 business days, and security reports within 48 hours.</p>
+
+  </main>
+  <footer class="footer">
+    <div class="wrap foot-row">
+      <div>
+        <p><strong>Muse Privacy.</strong> An independent project by Offline Base, not made or endorsed by Meta.</p>
+      </div>
+      <div class="foot-links">
+        <a href="/connector">Connector docs</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="mailto:__SUPPORT_EMAIL__">Support</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

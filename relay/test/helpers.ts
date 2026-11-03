@@ -27,8 +27,12 @@ export async function registerDevice(name = "Test laptop"): Promise<Device> {
   return response.json<Device>();
 }
 
-export async function pairCode(secret: string): Promise<string> {
-  const response = await SELF.fetch(`${ORIGIN}/device/pair`, { method: "POST", headers: { Authorization: `Bearer ${secret}` } });
+export async function pairCode(secret: string, review = false): Promise<string> {
+  const response = await SELF.fetch(`${ORIGIN}/device/pair`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${secret}`, "content-type": "application/json" },
+    body: review ? JSON.stringify({ review: true }) : undefined,
+  });
   expect(response.status).toBe(200);
   return (await response.json<{ code: string }>()).code;
 }
@@ -112,11 +116,13 @@ export async function startAuthorize(clientId?: string): Promise<AuthorizeStart>
   return { clientId, verifier, url, handle, cookie, html };
 }
 
-export function submitCode(start: AuthorizeStart, code: string, ip: string, decision = "link"): Promise<Response> {
+export function submitCode(start: AuthorizeStart, code: string, ip: string, decision = "link", access?: string): Promise<Response> {
+  const form = new URLSearchParams({ handle: start.handle, code, decision });
+  if (access !== undefined) form.set("access", access);
   return SELF.fetch(start.url, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", cookie: start.cookie, "CF-Connecting-IP": ip },
-    body: new URLSearchParams({ handle: start.handle, code, decision }).toString(),
+    body: form.toString(),
     redirect: "manual",
   });
 }
@@ -128,11 +134,14 @@ export interface Tokens {
   clientId: string;
 }
 
-/** The whole link: DCR (unless `clientId` is given), authorize page, pairing code, token exchange. */
-export async function linkApp(secret: string, clientId?: string): Promise<Tokens> {
+/**
+ * The whole link: DCR (unless `clientId` is given), authorize page, pairing code, token exchange.
+ * `access` is the link page's choice ("read" for read only); `code` reuses a code, such as a review code.
+ */
+export async function linkApp(secret: string, clientId?: string, access?: string, code?: string): Promise<Tokens> {
   const start = await startAuthorize(clientId);
-  const code = await pairCode(secret);
-  const response = await submitCode(start, code, freshIp());
+  code ??= await pairCode(secret);
+  const response = await submitCode(start, code, freshIp(), "link", access);
   expect(response.status).toBe(302);
   const location = new URL(response.headers.get("location")!);
   expect(`${location.origin}${location.pathname}`).toBe(REDIRECT_URI);

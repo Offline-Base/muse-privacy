@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Privacy policy · Muse Privacy</title>
+  <meta name="description" content="What Muse Privacy keeps on your device, what Muse receives, and what the relay stores.">
+  <meta name="theme-color" content="#FAFAFA">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="doc.css">
+</head>
+<body>
+  <main class="doc">
+    <a class="back" href="/">Muse Privacy</a>
+    <h1>Privacy policy</h1>
+    <p class="lede">Muse Privacy is built so that the records it works on stay on hardware you own. This page says exactly what goes where.</p>
+    <p class="stamp">Last updated November 3, 2026. Muse Privacy is made by Offline Base.</p>
+
+    <h2>On your device</h2>
+    <p>Your documents, the text read from scans, the names and identifiers found in them, the tag map that links tags to real values, the finished files, your share and keep decisions and the router's learned rules are stored on your device, in a folder only your user account can read. In the reviewed configuration every model runs on the device too. We, Offline Base, cannot see any of it.</p>
+    <p>The device deletes decisions, finished jobs, scan text and unknown-name tag entries after 90 days. Results waiting for your OK stay until you answer.</p>
+
+    <h2>What Muse receives</h2>
+    <p>When Muse calls a tool, the device sends back only text with names and identifiers replaced by tags such as [Student A], or a summary, and only after its privacy checks and your rules allow it. Some results wait for you to tap Share it or Keep it here on the device. Anything sent to Muse is then held under Meta's terms and privacy policy, not ours, and deleting it on the device does not delete Meta's copy.</p>
+
+    <h2>What Muse sends us, and what we do with it</h2>
+    <p>Muse's requests (search queries, questions, task instructions and the files it asks the device to save) are processed on your device only to answer that request. They are kept on the device with your decisions for up to 90 days so you can review them and so the device's nightly "dreaming" job can relearn your share and keep rules. That job runs on the device and writes plain rules; in the reviewed configuration it trains no model and sends nothing anywhere.</p>
+    <p>We do not sell this data, use it for advertising, build profiles, infer sensitive characteristics from it, or use it to train models.</p>
+
+    <h2>The relay</h2>
+    <p>Muse reaches your device through our relay, a Cloudflare Worker. It passes each request and answer through without storing or logging their content. It keeps only: device ids, a hash of each device secret, OAuth clients, grants and hashed tokens, including whether a link is read only; hashed pairing codes; and hashed IP addresses in counters that reset every 10 minutes. Cloudflare keeps error logs for the relay; per-request logs are off.</p>
+    <p>Traffic between Muse, the relay and your device is encrypted in transit (HTTPS and WSS).</p>
+
+    <h2>Sharing</h2>
+    <p>We share nothing with anyone. Cloudflare hosts the relay as our processor. Muse is operated by Meta.</p>
+
+    <h2>Your choices</h2>
+    <ul>
+      <li>Link Muse as <strong>Read only</strong>, so it can list, search and ask but not start tasks or save files.</li>
+      <li>Revoke every Muse link with <code>relay_client unlink</code> on the device. The relay then deletes those grants.</li>
+      <li>Delete any decision on the device's approval page, or delete the app's folder to remove everything.</li>
+      <li>To have the relay forget your device, email us your device id.</li>
+    </ul>
+
+    <h2>Children</h2>
+    <p>Muse Privacy is used by adults, such as teachers. Student records stay on the device; with the COPPA or GDPR settings on, it deletes more and sooner, as the app's retention settings list.</p>
+
+    <h2>Security incidents</h2>
+    <p>If an incident affects user data we will tell affected users and Meta within 48 hours. Report a vulnerability privately to <a href="mailto:__SUPPORT_EMAIL__">__SUPPORT_EMAIL__</a>.</p>
+
+    <h2>Contact</h2>
+    <p><a href="mailto:__SUPPORT_EMAIL__">__SUPPORT_EMAIL__</a>. Changes to this policy are posted on this page with a new date.</p>
+
+  </main>
+  <footer class="footer">
+    <div class="wrap foot-row">
+      <div>
+        <p><strong>Muse Privacy.</strong> An independent project by Offline Base, not made or endorsed by Meta.</p>
+      </div>
+      <div class="foot-links">
+        <a href="/connector">Connector docs</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="mailto:__SUPPORT_EMAIL__">Support</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

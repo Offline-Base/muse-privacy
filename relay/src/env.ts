@@ -24,6 +24,11 @@ export interface Env {
 /** Stored, encrypted, with each grant; the /mcp handler sees it as ctx.props. */
 export interface GrantProps {
   deviceId: string;
+  /**
+   * True when the user picked "Read only" on the link page: the relay then lists and runs only
+   * the read tools (./readonly.ts). Links made before the choice existed have no value: full access.
+   */
+  readOnly?: boolean;
 }
 
 /** The one scope a linked app gets: reach the device's connector. */

@@ -522,8 +522,12 @@ async def test_register_stores_secret_0600_then_pair(settings):
     assert await rc.register(settings, relay_url=RELAY, http=http, force=True) == "dev-123"
 
     got = await rc.pair(settings, http=http)
-    assert got == {"code": "ABCD2345", "expires_in": 600}
+    assert got == {"code": "ABCD2345", "expires_in": 600, "uses": 1}
     assert seen[-1][:3] == ("POST", "/device/pair", "Bearer s3cret-value")
+    assert not seen[-1][3]
+
+    await rc.pair(settings, review=True, http=http)
+    assert json.loads(seen[-1][3]) == {"review": True}
 
 
 async def test_register_needs_a_relay_url(settings):
@@ -541,14 +545,29 @@ async def test_pair_before_register_and_with_a_bad_secret(settings):
 
 
 def test_cli_pair_prints_code_and_expiry(settings, monkeypatch, capsys):
-    async def fake_pair(s):
-        return {"code": "WXYZ6789", "expires_in": 600}
+    async def fake_pair(s, review=False):
+        return {"code": "WXYZ6789", "expires_in": 600, "uses": 1}
 
     monkeypatch.setattr(rc, "pair", fake_pair)
     monkeypatch.setattr("base.config.load_settings", lambda: settings)
     assert rc.main(["pair"]) == 0
     out = capsys.readouterr().out
     assert "Pairing code: WXYZ6789" in out and "10 minutes" in out and "—" not in out
+
+
+def test_cli_pair_review_says_how_long_and_for_whom(settings, monkeypatch, capsys):
+    asked = []
+
+    async def fake_pair(s, review=False):
+        asked.append(review)
+        return {"code": "WXYZ6789", "expires_in": 14 * 86400, "uses": 20}
+
+    monkeypatch.setattr(rc, "pair", fake_pair)
+    monkeypatch.setattr("base.config.load_settings", lambda: settings)
+    assert rc.main(["pair", "--review"]) == 0
+    out = capsys.readouterr().out
+    assert asked == [True]
+    assert "20 Muse accounts" in out and "14 days" in out and "invented data" in out and "—" not in out
 
 
 def test_cli_reports_errors_plainly(settings, monkeypatch, capsys):

@@ -143,20 +143,26 @@ async def register(
     return data["device_id"]
 
 
-async def pair(settings, *, http: httpx.AsyncClient | None = None) -> dict:
-    """Ask the relay for a one-time pairing code: {"code": "ABCD2345", "expires_in": 600}."""
+async def pair(settings, *, review: bool = False, http: httpx.AsyncClient | None = None) -> dict:
+    """Ask the relay for a pairing code: {"code": "ABCD2345", "expires_in": 600, "uses": 1}.
+
+    With review, a review code for a connector directory's reviewers: it links up to 20 Muse
+    accounts within 14 days. Use it only on a device that holds invented data.
+    """
     cfg = load_config(settings)
     if cfg is None:
         raise RelayError("This device is not registered yet. Run register first.")
     async with _client(http, settings) as client:
         resp = await client.post(
-            http_base(cfg["relay_url"]) + "/device/pair", headers={"authorization": f"Bearer {cfg['secret']}"}
+            http_base(cfg["relay_url"]) + "/device/pair",
+            headers={"authorization": f"Bearer {cfg['secret']}"},
+            json={"review": True} if review else None,
         )
         _check(resp, "pair")
         data = resp.json()
     if not isinstance(data.get("code"), str):
         raise RelayError("The relay sent an unexpected answer to pair.")
-    return {"code": data["code"], "expires_in": int(data.get("expires_in") or 600)}
+    return {"code": data["code"], "expires_in": int(data.get("expires_in") or 600), "uses": int(data.get("uses") or 1)}
 
 
 async def unlink(settings, *, http: httpx.AsyncClient | None = None) -> int:
@@ -483,7 +489,12 @@ def main(argv: list[str] | None = None) -> int:
     reg.add_argument("--name", default="Muse Privacy device", help="a label for this device")
     reg.add_argument("--relay-url", default=None, help="the relay address (default: RELAY_URL)")
     reg.add_argument("--force", action="store_true", help="replace an existing registration")
-    sub.add_parser("pair", help="print a one-time pairing code to enter in Muse")
+    pr = sub.add_parser("pair", help="print a one-time pairing code to enter in Muse")
+    pr.add_argument(
+        "--review",
+        action="store_true",
+        help="a code for connector reviewers: 20 links within 14 days (only on a device with invented data)",
+    )
     sub.add_parser("unlink", help="revoke every Muse link to this device (pair again to reconnect)")
     sub.add_parser("run", help="stay connected to the relay")
     args = parser.parse_args(argv)
@@ -502,12 +513,20 @@ def main(argv: list[str] | None = None) -> int:
             revoked = asyncio.run(unlink(settings))
             print(f"Revoked {revoked} Muse link(s). Muse can reach this device again only after a new pairing code.")
         elif args.command == "pair":
-            got = asyncio.run(pair(settings))
-            minutes = max(1, round(got["expires_in"] / 60))
+            got = asyncio.run(pair(settings, review=args.review))
             print(f"Pairing code: {got['code']}")
-            print(
-                f"It works once and expires in {minutes} minutes. Enter it in Muse when you connect Muse Privacy."
-            )
+            if args.review:
+                days = max(1, round(got["expires_in"] / 86400))
+                print(
+                    f"Review code: it links up to {got['uses']} Muse accounts to this device for {days} days. "
+                    "Give it only to reviewers, and only on a device with invented data. "
+                    "A new pair replaces it; unlink revokes every link it made."
+                )
+            else:
+                minutes = max(1, round(got["expires_in"] / 60))
+                print(
+                    f"It works once and expires in {minutes} minutes. Enter it in Muse when you connect Muse Privacy."
+                )
         else:
             asyncio.run(client_for(settings).run())
     except (RelayAuthError, RelayReplacedError) as exc:

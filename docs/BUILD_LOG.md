@@ -229,6 +229,15 @@ Router finding for Ethan: a request headed outside the class that both the label
 
 **00:33** Relayed by the training session: at Ethan's request writer-1 is being shut down, so the exploratory `iq2-io-lowest` row will not run (no GPU run without his OK for a new machine). Our `~/mp-gpu` there was copied to the team's shared storage by that session instead of deleted; we asked it to remove any copy of the throwaway llama-server key. The final IQ1_S report was already back here (e42a20f). It reported 12 `llama_api_key` files in the copy (one per side folder) and deleted all 12; no .env or other key file was copied, and the originals go with writer-1.
 
+## Nov 3
+
+**Muse Connector Platform.** Ethan asked to set Muse Privacy up for Meta's new connector directory (guidelines pasted in chat; the form's fields from a third-party write-up, Meta lists none). Gaps found against the guidelines and fixed on branch `ethan/muse-connector`, not deployed:
+- No read-only option (guideline 3.1). The link page now offers Full access or Read only, and the relay enforces it with a read tool allowlist: writes are answered by the relay and never reach the device, and tools/list is filtered. Older links keep full access.
+- Reviewers could not link: codes last 10 minutes and work once. Added review codes (`relay_client pair --review`): 20 links within 14 days, for a device with invented data only.
+- No privacy policy, terms or public docs, and the GitHub repo is private. Added `/connector`, `/privacy` and `/terms` to the site, and a 512 px icon. Support goes to an email placeholder (`__SUPPORT_EMAIL__`) until Ethan picks one; the pages must not deploy before that.
+- Guideline 4.2 bars training models on connector data: the `lora` dreaming backend and the OpenRouter Glimmer backend both send text off the device, so the submission names `DEVICE_ONLY=1`.
+Tests: relay 70 of 70 (12 new), tsc clean; `tests/test_relay_client.py` 40 of 40. Form answers and the owner's steps: docs/CONNECTOR_SUBMISSION.md. Nothing submitted to Meta.
+
 ## Open items
 
 - Ethan: which mode the routing tune targets; whether to hand over stage 2 IQ1_S early.
@@ -237,3 +246,4 @@ Router finding for Ethan: a request headed outside the class that both the label
 - Ethan: restart the live app (it is down); read the Oct 28 History row before deleting it; what the fine-tune trained on (decides sealing fresh_200_c or the templated set); restart window to move the live app to this code; Always approve is on in the live app.
 - Measure how often grading is refused for a never-share word in the model's own text.
 - Before submitting: check the `mlx-community/sam3.1-bf16` license in THIRD_PARTY_NOTICES.md.
+- Ethan: Muse Connector Platform, docs/CONNECTOR_SUBMISSION.md: support email, read the privacy policy and terms, deploy the relay and site, set up the reviewer device, then submit.

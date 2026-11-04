@@ -360,9 +360,12 @@ done
 systemctl daemon-reload
 if [ "$LIQUID" -eq 1 ]; then
   MODEL_UNIT=muse-privacy-checker.service
-  # The server's Wants= on the Glimmer unit is ignored while it is masked.
+  # The server's Wants= on the Glimmer unit is ignored while it is masked. A mask is a link in
+  # $UNIT_DIR, so the unit file installed there above has to go first.
   systemctl disable muse-privacy-glimmer.service 2>/dev/null || true
+  rm -f "$UNIT_DIR/muse-privacy-glimmer.service"
   systemctl mask muse-privacy-glimmer.service
+  systemctl daemon-reload
 else
   MODEL_UNIT=muse-privacy-glimmer.service
 fi

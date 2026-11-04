@@ -214,6 +214,7 @@ def test_install_liquid_mode():
     code = code_lines(DEPLOY / "install.sh")
     assert "set_env DEVICE_ONLY 1" in code and "set_env PRIMARY_MODEL lfm" in code
     assert "systemctl mask muse-privacy-glimmer.service" in code
+    assert code.index('rm -f "$UNIT_DIR/muse-privacy-glimmer.service"') < code.index("systemctl mask muse-privacy-glimmer.service")
     for name in ("LFM3-VL-2B-Q4_K_M.gguf", "mmproj-LFM3-VL-2B-Q8_0.gguf"):
         assert name in code
     out = subprocess.run(["bash", str(DEPLOY / "install.sh"), "--liquid", "--skip-model"], capture_output=True, text=True)

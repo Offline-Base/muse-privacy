@@ -1,6 +1,6 @@
 # Muse Connector Platform submission
 
-What to paste into Meta's connector form, what Meta's guidelines ask and how Muse Privacy meets each one, and what only the owner can do. Prepared Nov 3, 2026. The relay runs on Modal (a hackathon sponsor) since the evening of Nov 3: `relay_modal/`, one always-on container, at https://theethancastro--muse-privacy-relay.modal.run. The Cloudflare builds in `relay/` are retired; the device no longer connects to them. Nothing has been submitted.
+What to paste into Meta's connector form, what Meta's guidelines ask and how Muse Privacy meets each one, and what only the owner can do. Prepared Nov 3, 2026. The relay runs on Modal (a hackathon sponsor) since the evening of Nov 3: `relay_modal/`, one always-on container, at https://offline-base--muse-privacy-relay.modal.run. The Cloudflare builds in `relay/` are retired; the device no longer connects to them. Nothing has been submitted.
 
 The form, at muse.ai/platform ("Submit a connector"), as described by a third-party write-up (https://stacktr.ee/blog/muse-connector-platform.md); Meta's own pages do not list its fields. Signing in needs a work email and an emailed code. The last step accepts the Muse Connector Terms, which that write-up could not open.
 
@@ -46,7 +46,7 @@ Anything else box:
 | Field | Answer |
 |---|---|
 | Connection type | Existing MCP |
-| Hosted MCP endpoint | https://theethancastro--muse-privacy-relay.modal.run/mcp |
+| Hosted MCP endpoint | https://offline-base--muse-privacy-relay.modal.run/mcp |
 | Documentation | https://muse-privacy-ten.vercel.app/connector |
 | Authentication | OAuth with PKCE (dynamic client registration and Client ID Metadata Documents; scopes `mcp`, `offline_access`) |
 

@@ -28,17 +28,28 @@ START=0
 SKIP_MODEL=0
 MODEL_FILE=""
 MODEL_FILE_SHA=""
+LIQUID=0
+LLAMA_RELEASE=""
+LIQUID_REPO=LiquidAI/LFM3-VL-2B-GGUF
+LIQUID_FILES="LFM3-VL-2B-Q4_K_M.gguf mmproj-LFM3-VL-2B-Q8_0.gguf"
 
 usage() {
   cat <<'EOF'
-Usage: sudo deploy/jetson/install.sh [--build-llama] [--skip-model | --model-file FILE --model-sha256 HEX] [--start]
+Usage: sudo deploy/jetson/install.sh [--build-llama | --llama-release TAG] [--liquid | --skip-model | --model-file FILE --model-sha256 HEX] [--start]
 
   --build-llama   clone llama.cpp (tag b11972 or LLAMA_REF) into /opt/muse-privacy/llama.cpp
                   and build llama-server with CUDA if it is not there yet (takes a while)
+  --llama-release TAG
+                  instead of building, unpack llama.cpp's official arm64 CUDA 13.4 release for TAG
+                  (for example b11970) and its CUDA runtime, each checked against GitHub's SHA-256,
+                  into /opt/muse-privacy/llama.cpp/build/bin (no compiler or CUDA toolkit needed)
   --skip-model    do not download the Glimmer GGUF
   --model-file F  copy this GGUF (from a USB stick) into /opt/muse-privacy/models instead of
                   downloading one, and point the model service at it (GLIMMER_GGUF in /etc/muse-privacy/env)
   --model-sha256  the SHA-256 that file must have (needed with --model-file; plug_in_model --check prints it)
+  --liquid        run device only on Liquid's LFM3-VL-2B instead of Glimmer: download it and its
+                  vision projector (SHA-256 checked), install the Liquid service on 127.0.0.1:8083, set
+                  DEVICE_ONLY=1 and PRIMARY_MODEL=lfm, and mask the Glimmer service
   --start         start the services at the end (otherwise they are only enabled)
 
 Environment:
@@ -60,6 +71,8 @@ while [ $# -gt 0 ]; do
     --model-file) shift; MODEL_FILE="${1:-}" ;;
     --model-sha256) shift; MODEL_FILE_SHA="${1:-}" ;;
     --start) START=1 ;;
+    --liquid) LIQUID=1 ;;
+    --llama-release) shift; LLAMA_RELEASE="${1:-}" ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "unknown option: $1" ;;
   esac
@@ -72,6 +85,14 @@ if [ -n "$MODEL_FILE" ] || [ -n "$MODEL_FILE_SHA" ]; then
   case "$MODEL_FILE" in *.gguf) ;; *) die "--model-file must be a .gguf file" ;; esac
   [[ "$MODEL_FILE_SHA" =~ ^[0-9a-f]{64}$ ]] || die "--model-sha256 must be 64 lowercase hex characters"
   [ "$SKIP_MODEL" -eq 0 ] || die "--skip-model and --model-file do not go together"
+fi
+
+if [ -n "$LLAMA_RELEASE" ]; then
+  [[ "$LLAMA_RELEASE" =~ ^b[0-9]+$ ]] || die "--llama-release takes a tag like b11970"
+  [ "$BUILD_LLAMA" -eq 0 ] || die "--build-llama and --llama-release do not go together"
+fi
+if [ "$LIQUID" -eq 1 ] && { [ -n "$MODEL_FILE" ] || [ "$SKIP_MODEL" -eq 1 ]; }; then
+  die "--liquid downloads its own model: leave out --model-file and --skip-model"
 fi
 
 [ "$(uname -s)" = Linux ] || die "run this on the Jetson itself (Linux)"
@@ -169,6 +190,33 @@ say "llama.cpp"
 LLAMA_BIN="$PREFIX/llama.cpp/build/bin/llama-server"
 if [ -x "$LLAMA_BIN" ]; then
   echo "llama-server found."
+elif [ -n "$LLAMA_RELEASE" ]; then
+  # Two assets of the release: llama-server with its libraries, and the CUDA runtime it loads. Both go
+  # in one folder, where the libraries find each other. GitHub's API lists each asset's SHA-256.
+  BIN_DIR="$(dirname "$LLAMA_BIN")"
+  install -d -m 0755 "$BIN_DIR"
+  RELEASE_JSON="$(curl -fsSL --retry 3 "https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/$LLAMA_RELEASE")" \
+    || die "could not read llama.cpp release $LLAMA_RELEASE from GitHub"
+  for asset in "llama-$LLAMA_RELEASE-bin-ubuntu-cuda-13.4-arm64.tar.gz" "cudart-llama-$LLAMA_RELEASE-bin-ubuntu-cuda-13.4-arm64.tar.gz"; do
+    INFO="$(printf '%s' "$RELEASE_JSON" | python3 -c '
+import json, sys
+name = sys.argv[1]
+for a in json.load(sys.stdin).get("assets", []):
+    if a.get("name") == name and str(a.get("digest", "")).startswith("sha256:"):
+        print(a["digest"][7:], a["browser_download_url"])
+' "$asset")"
+    [ -n "$INFO" ] || die "release $LLAMA_RELEASE has no $asset with a SHA-256"
+    SHA="${INFO%% *}"; URL="${INFO##* }"
+    TMP="$PREFIX/$asset.part"
+    echo "Downloading $asset."
+    curl -fL --retry 10 --retry-delay 5 --continue-at - -o "$TMP" "$URL"
+    [ "$(sha256sum "$TMP" | cut -d' ' -f1)" = "$SHA" ] || { rm -f "$TMP"; die "SHA-256 mismatch for $asset"; }
+    tar -C "$BIN_DIR" --strip-components=1 -xzf "$TMP"
+    rm -f "$TMP"
+  done
+  chown -R root:root "$BIN_DIR"
+  [ -x "$LLAMA_BIN" ] || die "the release did not contain llama-server"
+  "$LLAMA_BIN" --version 2>&1 | head -n 2 || true
 elif [ "$BUILD_LLAMA" -eq 1 ]; then
   command -v git >/dev/null 2>&1 || die "missing command: git"
   command -v cmake >/dev/null 2>&1 || die "missing command: cmake"
@@ -189,8 +237,54 @@ else
   echo "or newer with CUDA there yourself. The Glimmer service will not start until it exists."
 fi
 
-say "Glimmer model"
-if [ -n "$MODEL_FILE" ]; then
+# Download one file from a Hugging Face repo into $PREFIX/models, resuming, and keep it only when
+# its SHA-256 matches the one the Hugging Face API lists.
+hf_fetch() {
+  local repo="$1" name="$2" dest info sha size have free_kb
+  dest="$PREFIX/models/$name"
+  info="$(curl -fsSL --retry 3 "https://huggingface.co/api/models/$repo/tree/main" | python3 -c '
+import json, sys
+name = sys.argv[1]
+for entry in json.load(sys.stdin):
+    lfs = entry.get("lfs") or {}
+    if entry.get("path") == name and lfs.get("oid"):
+        print(lfs["oid"], lfs.get("size") or entry.get("size") or 0)
+        break
+' "$name")" || die "could not read $name's SHA-256 from the Hugging Face API"
+  [ -n "$info" ] || die "the Hugging Face API did not list $name"
+  sha="${info%% *}"; size="${info##* }"
+  [[ "$sha" =~ ^[0-9a-f]{64}$ ]] || die "expected SHA-256 for $name does not look like one"
+  if [ -f "$dest" ] && [ "$(sha256sum "$dest" | cut -d' ' -f1)" = "$sha" ]; then
+    echo "$name already in place and verified."
+    return
+  fi
+  have=0
+  [ -f "$dest.part" ] && have="$(stat -c %s "$dest.part")"
+  free_kb="$(df -Pk "$PREFIX/models" | awk 'NR == 2 {print $4}')"
+  [ $(( (size - have) / 1024 + 1048576 )) -le "$free_kb" ] || die "not enough free disk for $name"
+  if [ "$have" -ne "$size" ]; then
+    echo "Downloading $name (resumes if interrupted)."
+    curl -fL --retry 10 --retry-delay 5 --continue-at - -o "$dest.part" "https://huggingface.co/$repo/resolve/main/$name"
+  fi
+  [ "$(sha256sum "$dest.part" | cut -d' ' -f1)" = "$sha" ] || die "SHA-256 mismatch for $dest.part. Delete it and run again."
+  mv -f "$dest.part" "$dest"
+  chmod 0644 "$dest"
+  echo "$name verified."
+}
+
+set_env() {
+  # One KEY=VALUE line in the site settings, replaced if the key is there.
+  if grep -q "^$1=" "$CONF/env"; then sed -i "s|^$1=.*|$1=$2|" "$CONF/env"; else printf '%s=%s\n' "$1" "$2" >>"$CONF/env"; fi
+}
+
+say "Model"
+if [ "$LIQUID" -eq 1 ]; then
+  for name in $LIQUID_FILES; do hf_fetch "$LIQUID_REPO" "$name"; done
+  # Every step, the router included, runs on Liquid's model on this board; nothing off the device.
+  set_env DEVICE_ONLY 1
+  set_env PRIMARY_MODEL lfm
+  echo "Device only on LFM3-VL-2B (DEVICE_ONLY=1, PRIMARY_MODEL=lfm in $CONF/env)."
+elif [ -n "$MODEL_FILE" ]; then
   DEST="$PREFIX/models/$(basename "$MODEL_FILE")"
   if [ ! -f "$DEST" ] || [ "$(sha256sum "$DEST" | cut -d' ' -f1)" != "$MODEL_FILE_SHA" ]; then
     FREE_KB="$(df -Pk "$PREFIX/models" | awk 'NR == 2 {print $4}')"
@@ -260,21 +354,29 @@ fi
 say "systemd units"
 install -m 0755 "$HERE/glimmer-env.sh" "$PREFIX/bin/glimmer-env.sh"
 install -m 0755 "$HERE/adapter_sync.sh" "$PREFIX/bin/adapter_sync.sh"
-for unit in muse-privacy-glimmer.service muse-privacy.service muse-privacy-relay.service; do
+for unit in muse-privacy-glimmer.service muse-privacy-checker.service muse-privacy.service muse-privacy-relay.service; do
   install -m 0644 "$HERE/$unit" "$UNIT_DIR/$unit"
 done
 systemctl daemon-reload
-systemctl enable muse-privacy-glimmer.service muse-privacy.service
+if [ "$LIQUID" -eq 1 ]; then
+  MODEL_UNIT=muse-privacy-checker.service
+  # The server's Wants= on the Glimmer unit is ignored while it is masked.
+  systemctl disable muse-privacy-glimmer.service 2>/dev/null || true
+  systemctl mask muse-privacy-glimmer.service
+else
+  MODEL_UNIT=muse-privacy-glimmer.service
+fi
+systemctl enable "$MODEL_UNIT" muse-privacy.service
 if [ "$START" -eq 1 ]; then
-  systemctl restart muse-privacy-glimmer.service muse-privacy.service
+  systemctl restart "$MODEL_UNIT" muse-privacy.service
 fi
 
 say "Done"
 cat <<EOF
 Next steps:
   1. Edit $CONF/env (APPROVAL_HOST so the laptop worker can reach this board, RELAY_URL, LIGHT_SERIAL).
-  2. Start:   systemctl start muse-privacy-glimmer muse-privacy
-     Logs:    journalctl -u muse-privacy-glimmer -u muse-privacy -f
+  2. Start:   systemctl start $MODEL_UNIT muse-privacy
+     Logs:    journalctl -u $MODEL_UNIT -u muse-privacy -f
   3. Pair the laptop worker: sudo -u $SERVICE_USER env BASE_HOME=$STATE/home $PREFIX/app/.venv/bin/python -m base.heavy.routes
      and copy $STATE/home/tls/cert.pem to the laptop for the worker's --ca-cert.
   4. After pairing the relay: systemctl enable --now muse-privacy-relay

@@ -2,7 +2,11 @@
 
 Muse can already reach your files through connectors, but whatever it reads lands in its cloud VM, names and all. That keeps it away from the private, tedious work most ready for automation wherever records have to stay with their owner: grading student papers, medical records, city agency casework. Muse Privacy gives Muse a private workspace on hardware you own, connected through a Muse connector: a laptop today, and a Jetson Orin Nano version that is designed but not run on a board yet. Muse plans the work with tags, a model on your device does every step that touches the documents, and only tagged or summarized results go back: names and identifiers are swapped for tags on the device, and a final leak check runs on every text before it leaves.
 
-Built solo for the Meta Global AI Developer Hackathon, startup track, under the theme Build for Your World. An independent project, not made or endorsed by Meta. Every person, essay and record in this repo is invented.
+Part of Muse Muse, Offline Base's entry (Ethan and Hussam) in the Meta Global AI Developer Hackathon, startup track, theme Build for Your World; the submitted copy lives in [Offline-Base/muse-muse/privacy](https://github.com/Offline-Base/muse-muse/tree/main/privacy). An independent project, not made or endorsed by Meta. Every person, essay and record in this repo is invented.
+
+**Which model, for the submission (Nov 4).** The organizers ruled on Nov 2 that every model the project calls at runtime must be Meta's. This repo's default setup (`DEVICE_ONLY=1`) runs Liquid's LFM3-VL-2B, which is not a Meta model, so it is a development setup outside the submission, and its numbers are not results of the submitted project. The submitted setup sends every step that touches documents to Muse Glimmer 30B in the cloud through OpenRouter (`DEVICE_ONLY=0`, `GLIMMER_BACKEND=openrouter`), on invented data only: on Nov 2, 0 leaks of names or identifiers on 200 invented items ([Muse Muse's privacy/README.md](https://github.com/Offline-Base/muse-muse/blob/main/privacy/README.md)). Glimmer on a device has not run for Muse Privacy.
+
+**Update, Nov 3 to 4.** The device-only setup runs on a Jetson Orin Nano 8GB (jetson-05) since Nov 3, installed with `deploy/jetson/install.sh --liquid --llama-release b11970`, behind the relay, which now runs on Modal (`relay_modal/`) at https://offline-base--muse-privacy-relay.modal.run. Codex, Muse Code, Claude, ChatGPT and the Muse app have been linked to that board through the relay. The Oct 31 status below is kept as written.
 
 **Status, Oct 31.** The setup this repo ships is device-only (`.env.example` sets `DEVICE_ONLY=1`): Liquid's LFM3-VL-2B on the laptop does every model step, your policy file decides what is shared (`ROUTER_LOOSEN=lists,result_words` is the default), and no model is reached off the laptop. On 200 invented items (`fresh_200_b`) there were [0 leaks of names or identifiers, 82.0% agreement with the expected decision (164 of 200) and 76 approval requests, 28 of them needless](eval/reports/matrix_baseline_attack_fixes.md); 2 results were shared that should have been asked about, and 3 were refused that should not have been. "Leaks" counts names and identifiers found in released text. It does not cover everything: a summary can still point at someone in words the floors do not list ([known limits](docs/THREAT_MODEL.md)). The model's labels change a couple of items between runs (82.5% in the [run before](eval/reports/floors_fresh_200_b.md)). That is a development set, because the router fixes came from ask causes seen on sets like it. The sealed set has not been scored, so there is no unseen number for this default yet.
 
@@ -42,7 +46,7 @@ Each toggle shows its own limit, such as "There is no BAA with Meta" for HIPAA, 
 flowchart LR
   subgraph cloud["Cloud"]
     muse["Muse app and its Secure VM<br/>plans with tags like [Student A]"]
-    relay["Relay<br/>Cloudflare Worker, OAuth, pairing code"]
+    relay["Relay<br/>on Modal (or a Cloudflare Worker), OAuth, pairing code"]
   end
   subgraph device["Your device: a laptop today"]
     client["Relay client<br/>dials out, nothing listens"]
@@ -74,7 +78,7 @@ flowchart LR
 4. Every result goes through `base/egress.py`: exact checks for names on the roster and identifiers (phones, emails, SSNs, Luhn-checked cards, student ids, addresses, dates of birth), and a second pass where the device model finds names the roster misses. Then the device reads Muse's request: a keyword scan for never-share topics, and one device-model call that labels who the result is for and what it asks (for a student's family, for someone outside the class, a whole text, who a tag really is, a class-level question). The privacy router then decides to share it tagged, share a summary, ask you on the approval page, or keep it; in today's default your policy decides, with no model call for the decision. A final leak check runs on every text before it leaves, and fails closed. If a check cannot run, the result is held on the device.
 5. Each night, dreaming rebuilds the router's rules from your approve and deny decisions, grouped by the kind of result and its topics, request topics included. It keeps them only if they score no worse on a holdout set with zero leaks. A learned "ask first" or "refuse" rule is a floor: it holds for every narrower group of its kind, so a closer share rule can never loosen it.
 
-On a Jetson (designed and tested in simulation, not run on a board), grading would be handed to the laptop: the laptop dials out to the Jetson (`base/heavy/worker.py`), so the managed laptop never listens on the network. The interfaces between modules are in [docs/CONTRACTS.md](docs/CONTRACTS.md).
+On a Jetson (the device-only setup ran on jetson-05 on Nov 3; the grading handoff below is tested in simulation only), grading would be handed to the laptop: the laptop dials out to the Jetson (`base/heavy/worker.py`), so the managed laptop never listens on the network. The interfaces between modules are in [docs/CONTRACTS.md](docs/CONTRACTS.md).
 
 ## Built during the event, and before
 
@@ -130,7 +134,7 @@ Later lines in `.env` win, so the `printf` overrides the cloud defaults. `uv run
 
 ### Jetson Orin Nano 8GB
 
-Not run on a board yet. Run as root from a checkout on the board; `install.sh` makes the service user, builds llama.cpp with CUDA, downloads and checks Glimmer i1-IQ1_S (6.5 GB), makes a self-signed certificate for the approval page and installs three systemd units. See [deploy/jetson/README.md](deploy/jetson/README.md).
+Run on jetson-05 on Nov 3 with `--liquid --llama-release b11970` (LFM3-VL-2B, device only, outside the submission); the Glimmer path below has not run on a board. Run as root from a checkout on the board; `install.sh` makes the service user, builds llama.cpp with CUDA, downloads and checks Glimmer i1-IQ1_S (6.5 GB), makes a self-signed certificate for the approval page and installs three systemd units. See [deploy/jetson/README.md](deploy/jetson/README.md).
 
 ```sh
 git clone https://github.com/Offline-Base/muse-privacy.git && cd muse-privacy
@@ -146,6 +150,8 @@ j base.connector.relay_client pair   # type this code in Muse
 To hand grading to the laptop, print the worker token on the board with `j base.heavy.routes`, copy `/var/lib/muse-privacy/home/tls/cert.pem` to the laptop, and run there `uv run python -m base.heavy.worker --jetson-url https://<jetson address>:8787 --token <token> --ca-cert cert.pem`.
 
 ## Add the connector to Muse
+
+The live relay runs on Modal: `relay_modal/deploy.sh` (one always-on container, SQLite on a Modal Volume; see `relay_modal/modal_app.py`). The Cloudflare Worker in `relay/` is the earlier version and works the same way:
 
 1. Deploy the relay once: `cd relay && npx wrangler login && ./deploy.sh`. It prints `https://muse-privacy-relay.<your-subdomain>.workers.dev`.
 2. On the laptop: put that address in `.env` as `RELAY_URL`, run `uv run python -m base.connector.relay_client register` once, then keep `uv run python -m base.connector.relay_client run` going next to `python -m base`.
@@ -250,7 +256,8 @@ Not measured yet: Glimmer's speed on the laptop and on a Jetson, the Jetson's me
 | Path | What |
 |---|---|
 | `base/` | The device: guard, model client, workspace and agent, router, approvals, egress, connector, relay client, approval page, heavy-step queue and worker, dreaming, light |
-| `relay/` | The Cloudflare Worker Muse connects to |
+| `relay_modal/` | The relay Muse connects to, as it runs now, on Modal |
+| `relay/` | The earlier Cloudflare Worker version of the relay |
 | `eval/` | The eval set, holdout, invented roster and teacher policy, the harness, and every report |
 | `scripts/` | Simulation, charts, synthetic data, speed bench, secrets scan, Modal scripts |
 | `deploy/jetson/` | systemd units and the installer for the board |

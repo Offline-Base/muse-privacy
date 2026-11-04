@@ -1,12 +1,61 @@
 # Muse Privacy
 
-Muse can already reach your files through connectors, but whatever it reads lands in its cloud VM, names and all. That keeps it away from the private, tedious work most ready for automation wherever records have to stay with their owner: grading student papers, medical records, city agency casework. Muse Privacy gives Muse a private workspace on hardware you own, connected through a Muse connector: a laptop today, and a Jetson Orin Nano version that is designed but not run on a board yet. Muse plans the work with tags, a model on your device does every step that touches the documents, and only tagged or summarized results go back: names and identifiers are swapped for tags on the device, and a final leak check runs on every text before it leaves.
+Muse can already reach your files through connectors, but whatever it reads lands in its cloud VM, names and all. That keeps it away from the private, tedious work most ready for automation wherever records have to stay with their owner: grading student papers, medical records, city agency casework. Muse Privacy is a Muse connector that gives Muse a private workspace on hardware you own. Muse plans the work with tags like [Student A], a separate reader model, not Muse, does every step that touches the documents, and only tagged or summarized results go back. Names and identifiers are swapped for tags on the device, and a final leak check runs on every text before it leaves.
 
-Part of Muse Muse, Offline Base's entry (Ethan and Hussam) in the Meta Global AI Developer Hackathon, startup track, theme Build for Your World; the submitted copy lives in [Offline-Base/muse-muse/privacy](https://github.com/Offline-Base/muse-muse/tree/main/privacy). An independent project, not made or endorsed by Meta. Every person, essay and record in this repo is invented.
+Part of Muse Muse, Offline Base's entry (Ethan and Hussam) in the Meta Global AI Developer Hackathon, startup track, theme Build for Your World. The submitted copy lives in [Offline-Base/muse-muse/privacy](https://github.com/Offline-Base/muse-muse/tree/main/privacy). An independent project, not made or endorsed by Meta. Every person, essay and record in this repo is invented.
 
 **Which model, for the submission (Nov 4).** The organizers ruled on Nov 2 that every model the project calls at runtime must be Meta's. This repo's default setup (`DEVICE_ONLY=1`) runs Liquid's LFM3-VL-2B, which is not a Meta model, so it is a development setup outside the submission, and its numbers are not results of the submitted project. The submitted setup sends every step that reads the documents to Muse Glimmer 30B in the cloud through OpenRouter, with `DEVICE_ONLY=0` and `GLIMMER_BACKEND=openrouter`, on invented data only. On Nov 2 it had 0 leaks of names or identifiers on 200 invented items ([Muse Muse's privacy/README.md](https://github.com/Offline-Base/muse-muse/blob/main/privacy/README.md)). Glimmer on a device has not run for Muse Privacy.
 
-**Update, Nov 3 to 4.** The device-only setup runs on a Jetson Orin Nano 8GB (jetson-05) since Nov 3, installed with `deploy/jetson/install.sh --liquid --llama-release b11970`, behind the relay, which now runs on Modal (`relay_modal/`) at https://offline-base--muse-privacy-relay.modal.run. Codex, Muse Code, Claude, ChatGPT and the Muse app have been linked to that board through the relay. The Oct 31 status below is kept as written.
+![The Muse Privacy page on www.musemuse.dev. Left card, before: a normal connector sends a named essay into Muse's cloud. Right card, after: Muse gets back only "[Student A] scored 3 of 4 on evidence" and the feedback is saved on the user's own device.](docs/readme/before-and-after.png)
+
+*Before and after, from the Muse Privacy page of the live site, www.musemuse.dev/private, captured Nov 4, 2026. The two cards are an illustration with an invented name, ID and essay line, not a recorded output, and the page says so. In this demo the reader model is Muse Glimmer 30B in the cloud through OpenRouter, on invented files only.*
+
+## In 60 seconds
+
+- **What it is.** A Muse connector (a remote MCP server behind a relay) plus a small app on a computer you own. The app holds your documents and the tag map. Muse gets back tagged or summarized results, never the documents.
+- **Who it is for.** People whose work runs on records that must stay with them. Teachers first (grading and feedback, with a student's name in every file), then special education staff, clinic front desks, caseworkers, finance and law offices, and families.
+- **How a request flows.**
+  1. You ask Muse in plain words, for example "grade the essays in class-4b against rubric.md". Muse plans the job with tags like [Student A] and calls the connector.
+  2. The device reads the files and swaps every name and identifier for a tag before any model sees them. The reader model then does the work (which model, and where, is in the note above).
+  3. Your policy decides each result: share it tagged, share a summary, ask you, or keep it on the device. A final leak check runs on every text before it leaves.
+  4. When the policy says ask, you tap Share it or Keep it here on the approval page the device serves.
+  5. Files with real names, such as one feedback file per student, are written only on the device. Muse gets back counts and tagged text.
+- **What is proven and what is not.** Every number in this README is on invented data, and every user is simulated. No real person has used it yet. The full list is in [Known limits](#known-limits).
+
+## See it
+
+<table>
+<tr>
+<td valign="top"><img width="420" src="docs/readme/one-run-grading.png" alt="A recorded run on www.musemuse.dev/private, scene Grading essays, step 1 of 5. Muse called run_private_task, got back started in 0.1 s, and the output held no private values."><br><sub>A recorded run: Muse starts a grading job and gets back "started", with no private values. From www.musemuse.dev/private, captured Nov 4, 2026. Recorded on Nov 2 with a script playing Muse, Muse Glimmer 30B through OpenRouter and invented records.</sub></td>
+<td valign="top"><img width="420" src="docs/readme/one-run-refused.png" alt="The same recorded run, scene Pushing for private records. Muse asked which students have an IEP, then pushed for 504 plans. search_documents came back refused after 26.9 s, with no private values in the output."><br><sub>Asking again does not work: Muse pushes for 504 plans and the device refuses, with no private values in the output. From www.musemuse.dev/private, captured Nov 3, 2026. Recorded on Nov 2, invented records.</sub></td>
+</tr>
+<tr>
+<td valign="top"><img width="420" src="docs/readme/landing-page.jpg" alt="The Muse Privacy landing page hero: Muse does the work. You keep the records. Buttons for Watch the demo and Read the code."><br><sub>The landing page, muse-privacy-ten.vercel.app, captured Nov 4, 2026 (top of the page only).</sub></td>
+<td valign="top"><img width="420" src="docs/readme/connector-page.png" alt="The Muse Privacy connector page: who it is for, what it adds beyond the browser, and the start of its requirements."><br><sub>The connector page written for Meta's connector directory: who it is for and what it adds. Meta has not approved or listed the connector. muse-privacy-ten.vercel.app/connector, captured Nov 4, 2026.</sub></td>
+</tr>
+<tr>
+<td valign="top"><img width="420" src="eval/sam_pages/p07_student_ids.png" alt="An invented test page with two student ID cards from a made-up school, each with a drawn face and a barcode, stamped SAMPLE."><br><sub>An invented test page for the SAM 3.1 covering step (faces, ID cards, barcodes), stamped SAMPLE. From eval/sam_pages, made by scripts/make_sam_pages.py. Covering is built and off by default. It has no measured number yet.</sub></td>
+<td valign="top"><img width="420" src="hardware/enclosure/out/preview_exploded.png" alt="CAD render, exploded view of the box for the board: light panel and diffuser, lid, body with a green board keep-out block, bracket and base."><br><sub>The box for the board, an exploded CAD render from hardware/enclosure/out. Designed, not built: the mounting holes are placeholders until a board is measured.</sub></td>
+</tr>
+</table>
+
+## Contents
+
+- [Where it stands](#where-it-stands)
+- [Who it's for](#who-its-for)
+- [How it works](#how-it-works)
+- [Built during the event, and before](#built-during-the-event-and-before)
+- [Related work](#related-work)
+- [Setup](#setup)
+- [Add the connector to Muse](#add-the-connector-to-muse)
+- [What Meta's models do here](#what-metas-models-do-here)
+- [Numbers](#numbers)
+- [Known limits](#known-limits)
+- [Layout](#layout)
+
+## Where it stands
+
+**Update, Nov 3 to 4.** Since Nov 3 the device-only setup runs on a Jetson Orin Nano 8GB (jetson-05), outside the submission. It was installed with `deploy/jetson/install.sh --liquid --llama-release b11970` and sits behind the relay, which now runs on Modal (`relay_modal/`) at https://offline-base--muse-privacy-relay.modal.run. Codex, Muse Code, Claude, ChatGPT and the Muse app have been linked to that board through the relay. The Oct 31 status below is kept as written.
 
 **Status, Oct 31.** The setup this repo ships is device-only (`.env.example` sets `DEVICE_ONLY=1`): Liquid's LFM3-VL-2B on the laptop does every model step, your policy file decides what is shared (`ROUTER_LOOSEN=lists,result_words` is the default), and no model is reached off the laptop. On 200 invented items (`fresh_200_b`) there were [0 leaks of names or identifiers, 82.0% agreement with the expected decision (164 of 200) and 76 approval requests, 28 of them needless](eval/reports/matrix_baseline_attack_fixes.md); 2 results were shared that should have been asked about, and 3 were refused that should not have been. "Leaks" counts names and identifiers found in released text. It does not cover everything: a summary can still point at someone in words the floors do not list ([known limits](docs/THREAT_MODEL.md)). The model's labels change a couple of items between runs (82.5% in the [run before](eval/reports/floors_fresh_200_b.md)). That is a development set, because the router fixes came from ask causes seen on sets like it. The sealed set has not been scored, so there is no unseen number for this default yet.
 
@@ -16,17 +65,17 @@ Part of Muse Muse, Offline Base's entry (Ethan and Hussam) in the Meta Global AI
 
 **Claude and ChatGPT.** The connector is a plain remote MCP server behind the relay's OAuth, so Claude's custom connectors and ChatGPT's developer mode can link to it the same way: [docs/OTHER_APPS.md](docs/OTHER_APPS.md). A local test links clients that register as Claude, ChatGPT and Muse through the relay and gets tagged results back; neither app has been tried for real yet. `LINKED_APP=Claude` (or ChatGPT) makes the device's pages and notes name that app and its maker.
 
-**The Meta AI app.** It works there by copy and paste, not as a connector: no public source found on Oct 31 shows the Meta AI app taking outside connectors (Muse takes them through its directory). On the device's Prepare page you write the question with real names and copy the tagged version into the Meta AI app; then paste the answer back under Put the names back, and the device swaps in the real names on that page only. Only tags the device handed out come back, and nothing on that page is saved or sent. The Meta AI app sees only what you paste, and it never reaches your files. If the Meta AI app opens to connectors, the same connector should work there, untested.
-
-**Privacy toggles.** There are toggles for student, health, financial, work, privacy-law and government records, a setup page, a receipt for each result and one-command start. A toggle tags more, locks the settings that could undo it, and holds results it should; the government ones send nothing to Muse. A toggle does not make anyone legally covered: your school, clinic, agency or company still decides whether Muse may be used, and whatever you type into Muse reaches Meta before the device sees it. The plan and its limits are in [docs/COMPLIANCE_PLAN.md](docs/COMPLIANCE_PLAN.md).
+**The Meta AI app.** It works there by copy and paste, not as a connector. No public source found on Oct 31 shows the Meta AI app taking outside connectors (Muse takes them through its directory). On the device's Prepare page you write the question with real names and copy the tagged version into the Meta AI app. Then you paste the answer back under Put the names back, and the device swaps in the real names on that page only. Only tags the device handed out come back, and nothing on that page is saved or sent. The Meta AI app sees only what you paste, and it never reaches your files. If the Meta AI app opens to connectors, the same connector should work there, untested.
 
 ## Who it's for
 
 Anyone whose work runs on records that have to stay with whoever holds them, and who still wants an agent to do the tedious part. The privacy toggles cover six groups. Teachers are the most built out, and the only group with a measured job from start to finish. For the others, the toggles, invented records and simulated users exist, and most of it is not measured yet.
 
+**Privacy toggles.** There are toggles for student, health, financial, work, privacy-law and government records, a setup page, a receipt for each result and one-command start. A toggle tags more, locks the settings that could undo it, and holds results it should; the government ones send nothing to Muse. A toggle does not make anyone legally covered: your school, clinic, agency or company still decides whether Muse may be used, and whatever you type into Muse reaches Meta before the device sees it. The plan and its limits are in [docs/COMPLIANCE_PLAN.md](docs/COMPLIANCE_PLAN.md).
+
 | Who | What Muse could do | What stays on the device | In this repo | Measured |
 |---|---|---|---|---|
-| Teachers | Grade essays, write feedback, sum up a class, draft parent notes | Essays, names, student ids, the feedback files | An invented class of 24 with essays, a rubric and records; FERPA, COPPA and state student-privacy toggles | Grading job and decisions, below and in the [status](#muse-privacy) |
+| Teachers | Grade essays, write feedback, sum up a class, draft parent notes | Essays, names, student ids, the feedback files | An invented class of 24 with essays, a rubric and records; FERPA, COPPA and state student-privacy toggles | Grading job and decisions, below and in [Where it stands](#where-it-stands) |
 | Special education coordinators, school privacy reviewers | Summaries around IEP and 504 work; an audit of what left the device | IEP and 504 notes, health office and lunch records | `demo/records/`; simulated sped_coordinator and privacy_officer users | Not yet: the persona study has not run |
 | Clinic front desks, substance-use programs | Visit counts, referral lists, reminders | Visit notes, referrals, dates, record numbers, addiction treatment details | HIPAA and 42 CFR Part 2 toggles; a simulated clinic coordinator with 80 invented items | [HIPAA tagging](eval/reports/compliance_with_model_score_build.md) on invented sentences: 0 missed, 0 of 20 clean sentences changed (sentences used while the rules were written) |
 | City casework and other government work | Nothing with the records: the caseworker asks on the device's own Ask page | Everything: the CUI, CJIS and export-control toggles send nothing to Muse, not even tagged text | `demo/casework/` (6 invented housing case files); a simulated housing caseworker | Not yet |
@@ -38,7 +87,7 @@ Each toggle shows its own limit, such as "There is no BAA with Meta" for HIPAA, 
 
 **Families.** The guardian sets the rules, and the family member uses Muse with them. Two limits shape this case. What someone types or pastes into Muse reaches Meta before the device sees it, so the device keeps the family's files from going out, but it cannot stop a card number typed into the chat; when a request already holds a private detail, the device can only say so afterward. And Meta's terms set a minimum age of 13 for Muse, so this is for teens, not younger children. A guardian PIN on the Setup page locks the settings and, if the guardian chooses, approving results; anyone can still deny one. It stops changes at the device, not someone with an administrator account on the computer.
 
-**Teachers, built out first.** The author builds AI tools with school districts, and grading and feedback, the job this build automates, has a student's name in every file. That is the event's Build for Your World theme: "Solve a problem you know firsthand, free up time and mental space" ([event page](https://dev.meta.ai/events/global-hackathon)). Under FERPA's school-official exception, a school may give education records to an outside service without parent consent only if, among other conditions, the service is "under the direct control of the agency or institution with respect to the use and maintenance of education records" ([US Department of Education](https://studentprivacy.ed.gov/faq/who-school-official-under-ferpa)). Muse Privacy keeps the essays on the teacher's own laptop: Muse plans the job with tags, the device's model grades them, and the feedback files with real names are written only there. In the [device smoke test](eval/reports/device_smoke_lfm_loosen_default.md), a script playing Muse graded 24 invented essays on LFM3-VL-2B in 41.1 s (35.9 s with the FERPA toggle on) and wrote 24 feedback files in a throwaway home, and every receipt said device only. That measures the path and its time, not how good the grades are. Today it is a laptop install (below); the Jetson box, designed but not run on a board yet, is the version a school, clinic or office could own outright.
+**Teachers, built out first.** The author builds AI tools with school districts, and grading and feedback, the job this build automates, has a student's name in every file. That is the event's Build for Your World theme: "Solve a problem you know firsthand, free up time and mental space" ([event page](https://dev.meta.ai/events/global-hackathon)). Under FERPA's school-official exception, a school may give education records to an outside service without parent consent only if, among other conditions, the service is "under the direct control of the agency or institution with respect to the use and maintenance of education records" ([US Department of Education](https://studentprivacy.ed.gov/faq/who-school-official-under-ferpa)). Muse Privacy keeps the essays on the teacher's own laptop: Muse plans the job with tags, the device's model grades them, and the feedback files with real names are written only there. In the [device smoke test](eval/reports/device_smoke_lfm_loosen_default.md), a script playing Muse graded 24 invented essays on LFM3-VL-2B in 41.1 s (35.9 s with the FERPA toggle on) and wrote 24 feedback files in a throwaway home, and every receipt said device only. That measures the path and its time, not how good the grades are. Today it is a laptop install (below). The Jetson box is the version a school, clinic or office could own outright; the device-only setup has run on one since Nov 3, outside the submission.
 
 ## How it works
 
@@ -227,7 +276,9 @@ These are not today's setup. All are on OpenRouter's Glimmer with invented data.
 | Request labels on 160 held-out invented requests (precision / recall) | parents 0.86 / 0.86, someone outside the class 0.75 / 0.84, class-level 0.94 / 0.94, who a tag is 1.00 / 1.00 (6 items), whole text 0.50 / 1.00 | [request_topics.md](eval/reports/request_topics.md) |
 | Grading consistency | Same total for 21 of 24 essays between two Glimmer runs; Muse Spark 1.3 gave the same total for 15 of 24 and within one point for 23 of 24 | [grading_spotcheck.md](eval/reports/grading_spotcheck.md), [grading_crosscheck.md](eval/reports/grading_crosscheck.md) |
 
-![Five nights of dreaming on production inputs](eval/reports/final/five_nights.png)
+![Five nights of dreaming, an earlier run with a simulated teacher and invented data. Approval requests per day fall from 10 to 6, agreement with the teacher on the holdout items goes from 75% to 90%, and leaks stay at 0.](eval/reports/final/five_nights.png)
+
+*Chart from eval/reports/final/, made by the earlier run with Muse Glimmer 30B through OpenRouter, a simulated teacher and invented data. Not today's setup.*
 
 The chart's leak line counts the holdout, the simulated days and the unseen test with both routers. It counts names and identifiers, not policy misses: on day 2 a learned rule shared a discipline note the teacher would have kept (see Known limits).
 
@@ -264,4 +315,5 @@ Not measured yet: Glimmer's speed on the laptop and on a Jetson, the Jetson's me
 | `hardware/` | Status light firmware and the enclosure model |
 | `demo/` | The invented class folder (marked `.synthetic`) |
 | `docs/` | Contracts, decisions, prior work, Muse setup, demo script, handoff |
+| `docs/readme/` | The screenshots in this README |
 | `site/` | The landing page with the animated walkthrough: static HTML, CSS and JS that load nothing from other sites. Open `site/index.html`, or serve it with `python3 -m http.server 8765 --bind 127.0.0.1 --directory site` |

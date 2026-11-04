@@ -8,6 +8,9 @@
 # on the new one. Run from the repo root. First time: create the secret (see modal_app.py).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# The offline-base workspace defaults to image builder 2026.10, newer than the Modal client here
+# supports; 2025.06 builds the same small image. MODAL_PROFILE picks the workspace (offlinebase).
+export MODAL_IMAGE_BUILDER_VERSION="${MODAL_IMAGE_BUILDER_VERSION:-2025.06}"
 old=$(modal container list --json 2>/dev/null | python3 -c '
 import json, sys
 try:

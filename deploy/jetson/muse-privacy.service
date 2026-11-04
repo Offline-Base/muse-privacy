@@ -2,7 +2,7 @@
 [Unit]
 Description=Muse Privacy server
 Wants=muse-privacy-glimmer.service
-After=network-online.target muse-privacy-glimmer.service
+After=network-online.target muse-privacy-glimmer.service muse-privacy-checker.service
 
 [Service]
 Type=simple

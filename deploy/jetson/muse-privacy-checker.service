@@ -1,0 +1,49 @@
+# Liquid's LFM3-VL-2B on llama-server, loopback only: the model for every step when the board runs
+# device only (install.sh --liquid). Same flags as the laptop's scripts/start_checker.sh.
+[Unit]
+Description=Muse Privacy Liquid model (LFM3-VL-2B, llama-server on 127.0.0.1:8083)
+After=network.target
+AssertPathExists=/opt/muse-privacy/llama.cpp/build/bin/llama-server
+AssertPathExists=/opt/muse-privacy/models/LFM3-VL-2B-Q4_K_M.gguf
+AssertPathExists=/opt/muse-privacy/models/mmproj-LFM3-VL-2B-Q8_0.gguf
+AssertPathExists=/var/lib/muse-privacy/home/llama_api_key
+
+[Service]
+Type=simple
+User=muse-privacy
+Group=muse-privacy
+# install.sh --llama-release unpacks llama-server and the CUDA runtime it loads into one folder.
+Environment=LD_LIBRARY_PATH=/opt/muse-privacy/llama.cpp/build/bin
+# Thinking stays off on the server (--reasoning-budget 0): llama.cpp b11972 breaks json_schema replies
+# when a request also sends enable_thinking false. The prompt cache and context checkpoints are off
+# so host memory does not grow with each prompt; the key file keeps other local processes off it.
+ExecStart=/opt/muse-privacy/llama.cpp/build/bin/llama-server --model /opt/muse-privacy/models/LFM3-VL-2B-Q4_K_M.gguf --mmproj /opt/muse-privacy/models/mmproj-LFM3-VL-2B-Q8_0.gguf --alias lfm3-vl-2b --host 127.0.0.1 --port 8083 -c 16384 -np 1 -ngl 99 --jinja --reasoning-budget 0 --temp 0.1 --top-p 1.0 --top-k 50 --min-p 0.0 --repeat-penalty 1.1 --cache-ram 0 --ctx-checkpoints 0 --no-slots --api-key-file /var/lib/muse-privacy/home/llama_api_key
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=300
+
+# Hardening, as for the Glimmer unit. No PrivateDevices and no MemoryMax: llama-server needs the
+# GPU device nodes, and the GPU shares the board's memory with the CPU.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/muse-privacy
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressAllow=localhost
+IPAddressDeny=any
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
